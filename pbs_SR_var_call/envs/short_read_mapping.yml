@@ -1,7 +1,7 @@
 name: short_read_mapping
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
   - defaults
 dependencies:
   - _libgcc_mutex=0.1=conda_forge
@@ -64,6 +64,7 @@ dependencies:
   - perl=5.32.0=h36c2ea0_0
   - pillow=8.1.0=py36ha6010c0_2
   - pip=21.0.1=pyhd8ed1ab_0
+  - plink=1.90b6.18=h516909a_0
   - pycparser=2.20=pyh9f0ad1d_2
   - pyopenssl=20.0.1=pyhd8ed1ab_0
   - pyparsing=2.4.7=pyh9f0ad1d_0
