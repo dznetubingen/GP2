@@ -2,7 +2,7 @@
 import glob
 import os
 
-include: "rules/qc_split.smk"
+include: "rules/qc_fastq.smk"
 include: "rules/align.smk"
 include: "rules/haplotype_caller.smk"
 
