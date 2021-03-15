@@ -2,8 +2,8 @@
 import glob
 import os
 
-#include: "rules/qc_split.smk"
-#include: "rules/align.smk"
+include: "rules/qc_split.smk"
+include: "rules/align.smk"
 include: "rules/haplotype_caller.smk"
 
 #create tmpdir by yourself as $TMPDIR is shared with all the jobs on the drive, sometimes there's not enough space
@@ -29,10 +29,10 @@ localrules: multiqc, all
 
 rule all:
     input:
-#        "qc/multiqc.html",
-#        expand("alignment/{sample}.bam", sample=SAMPLES),
-#        expand("stats/{sample}_aln.stats", sample=SAMPLES),
-#        expand("stats/{sample}.metrics.txt", sample=SAMPLES),
-#        expand("bam_recal/{sample}_recal.table", sample=SAMPLES)
+        "qc/multiqc.html",
+        expand("alignment/{sample}.bam", sample=SAMPLES),
+        expand("stats/{sample}_aln.stats", sample=SAMPLES),
+        expand("stats/{sample}.metrics.txt", sample=SAMPLES),
+        expand("bam_recal/{sample}_recal.table", sample=SAMPLES),
         expand("raw_vcf/{chromosome}.vcf.gz",chromosome=chr_id, sample=SAMPLES)
         
