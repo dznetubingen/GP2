@@ -1,0 +1,42 @@
+#!/usr/bin/env python
+import glob
+import os
+
+from shutil import copyfile
+
+# Get parent directory of snakefile
+SNAKEDIR = os.path.dirname(workflow.snakefile)
+
+configfile: "config.yaml"
+
+WORKDIR = config["resources"]["fastqdir"]
+
+workdir: WORKDIR
+
+#### CONFIGURATION ######
+
+VCF = {FASTQDIR}/whatshap_output/phased.vcf
+G_REF = config["resources"]["reference"]
+T_REF = {FASTQDIR}/flair_output/flair_isoforms.fa
+T_ANN = {FASTQDIR}/flair_output/flair_isoforms.gtf
+sample = config["resources"]["sample"]
+BAM = "../pipeline-structural-variation/alignment/{sample}_lra.bam"
+
+
+##### RULES #############
+
+
+rule phasing:
+    input:
+        dne_g_bam = BAM,
+        phased_vcf = FASTQSHORT,
+        g_ref = G_REF
+    output:
+        directory("{FASTQDIR}/lorals_output")
+    singularity:
+        "../singularityIMG/long_read_tools.simg"
+    threads: 15
+    shell:
+        """
+	whatshap phase -o {output}/phased.vcf --reference={input.ref} {input.vcf} {input.bam}
+	"""

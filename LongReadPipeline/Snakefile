@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+import glob
+import os
+
+if not os.path.exists("log"):
+    os.makedirs("log")
+	
+configfile: "config.yaml"
+
+MODE = config["resources"]["mode"]
+FASTQDIR = config["resources"]["fastqdir"]
+SV = config["resources"]["sv_detection"]
+FLAIR = config["resources"]["flair"]
+PH = config["resources"]["phasing"] 
+Epy = config["resources"]["epygenetics"]
+
+if MODE == 'dna':
+    include: "rules/basecalling.smk",
+    include: "rules/qc.smk"
+        if SV == 'run':
+            include: "pipeline-structural-variation/Snakefile"
+        if Epy == 'run':
+            include:  "rules/nanopolish.smk"
+        if PH == 'run':
+            include: "rules/phasing.smk"
+    
+elif MODE == 'rna':
+    include: "rules/basecalling.smk",
+    include: "rules/qc.smk",
+    include: "rules/pychopper.smk"
+        if FLAIR == 'run':
+            include: "rules/flair.smk"
+
+elif MODE == 'asts':
+    include: "lorals/Snakefile" 
+   
+else:
+    print("Unavailable mode")
+
+
+rule all:
+    input:
+        expand("{fastqdir}/all_pass_reads.fastq.gz", fastqdir = FASTQDIR),
+        expand("{fastqdir}/Nanoplot", fastqdir = FASTQDIR)

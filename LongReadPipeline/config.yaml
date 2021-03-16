@@ -1,0 +1,14 @@
+resources:
+    fast5dir: /fast5
+    fastqdir: /fastq
+    sample: "sample"
+    vcf: /illumina.vcf
+#reads_manifest: /reads_manifest.tsv  #tab-delimited file containing the sample name, condition, batch*, and path to reads.fq/fa
+    reference: /reference.fa
+    annotation: /annotation.gtf
+    guppy_config: 'dna_r9.4.1_450bps_hac_prom.cfg'
+    mode: 'dna'  # available options| 'dna', 'rna', 'asts'
+    sv_detection: 'run'
+    flair: 'run'
+    phasing: 'run'
+    epygenetics: 'run'
