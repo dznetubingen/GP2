@@ -154,7 +154,7 @@ rule mark_duplicate:
              --CREATE_MD5_FILE true \
              --CREATE_INDEX true
         """
-
+###For running MarkDuplicatesSpark 
 #rule mark_duplicate:
 #    input:
 #        "aln/{sample}_tag.bam"
@@ -162,9 +162,8 @@ rule mark_duplicate:
 #        bam = protected("alignment/{sample}.bam"),
 #        metrics = "stats/{sample}.metrics.txt"
 #    params:
-#        java_opts ="-Dsamjdk.compression_level=5 -Xms48G",
-#        novaseq_dup= "2500",
-#        tmpdir = "$TMPDIR"
+#        java_opts ="-Dsamjdk.compression_level=5 -Xms48G -Djava.io.tmpdir=tmp_scratch",
+#        novaseq_dup= "2500"
 #    threads: 5
 #    resources:
 #        mem = "5gb",
@@ -179,6 +178,9 @@ rule mark_duplicate:
 #                -O {output.bam} \
 #                --optical-duplicate-pixel-distance {params.novaseq_dup} \
 #                -OBI true \
+#                -ASSUME_SORT_ORDER queryname \
+#                --CREATE_MD5_FILE true \
+#                --CREATE_INDEX true \
 #                --conf 'spark.executor.cores={threads}' \
 #                --conf 'spark.local.dir={params.tmpdir}'
 #        """
