@@ -15,40 +15,35 @@ chr_id= ["chr" + str(i) for i in chr_list]
 
 SAMPLES, = glob_wildcards(FASTQDIR + "/{sample}_R1.fastq.gz")
 
-#rule filter_excesshet:
-#    input:
-#        vcf = "raw_vcf/{chromosome}.vcf.gz"
-#    output:
-#       temp(vcf="cohort_excesshet_{chromosome}.vcf.gz" if config["condition"] else [])
-#    params:
-#        java_opts = "-Xmx3g -Xms3g"
-#    container:
-#        "docker://broadinstitute/gatk:4.1.9.0"
+rule gather_rawvcf:
+    input:
+        lambda w: expand("raw_vcf/{chromosome}.vcf.gz", chromosome= chr_id)
+        #expand("raw_vcf/{chromosome}.vcf.gz", chromosome= chr_id)
+    output:
+        temp("VQSR_all/FD_10L_raw.vcf.gz")
+    params:
+        java_opts = "-Xmx3g -Xms3g",
+        vcf = lambda w: "-I=" + " -I=".join(expand("raw_vcf/{chromosome}.vcf.gz", chromosome= chr_id))
+    container:
+        "docker://broadinstitute/gatk:4.1.9.0"
 #    resources:
-#        mem = "8gb",
-#        walltime = "12:00:00"
+#        mem = "12gb",
+#        walltime = "24:00:00"
 #    benchmark:
-#        "benchmarks/recal_{sample}.tsv"
-#    shell:
-#        """
-#         num=$(ls {input} | wc -l)
-#         if [ "$num" -gt 100]
-#              then
-#              gatk --java-options "{params.java_opts}" \
-#                    VariantFiltration \
-#                    -V ${input} \
-#                    --filter-expression "ExcessHet > 54.69" \
-#                    --filter-name ExcessHet \
-#                    -O ${output} &&
-#         fi
-#        """
+#        "benchmarks/bqsr_{sample}.tsv"
+    shell:
+        """
+        gatk  --java-options "{params.java_opts}" \
+              GatherVcfs \
+              {params.vcf} \
+              -O {output} && tabix -p vcf {output}
+        """
 
 rule make_site:
     input:
-       "raw_vcf/{chromosome}.vcf.gz"        
-       #rules.filter_excesshet.output
+       "VQSR_all/FD_10L_raw.vcf.gz"        
     output:
-        temp("VQSR/{chromosome}_sitesonly.vcf.gz")
+        temp("VQSR_all/FD_10L_sitesonly.vcf.gz")
     params:
         java_opts = "-Xmx3g -Xms3g"
     container:
@@ -62,16 +57,16 @@ rule make_site:
         """
         gatk  --java-options "{params.java_opts}" \
               MakeSitesOnlyVcf \
-              --INPUT {input} \
-              --OUTPUT {output}
+              -I {input} \
+              -O {output}
         """
 
 rule VQSR_indel:
     input:
         rules.make_site.output
     output:
-        recal = temp("VQSR/indel/{chromosome}.recal"),
-        tranches = temp("VQSR/indel/{chromosome}_indel.tranches")
+        recal = temp("VQSR_all/indel/FD_10L.recal"),
+        tranches = temp("VQSR_all/indel/FD_10L.tranches")
     params:
         mills_vcf = GENOMEDIR + "/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
         axiomPoly_vcf = GENOMEDIR + "/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz",
@@ -100,14 +95,14 @@ rule VQSR_snp:
     input:
         rules.make_site.output
     output:
-        recal = temp("VQSR/snp/{chromosome}.recal"),
-        tranches = temp("VQSR/snp/{chromosome}.tranches")
+        recal = temp("VQSR_all/snp/FD_10L.recal"),
+        tranches = temp("VQSR_all/snp/FD_10L.tranches")
     params:
         hapmap_vcf = GENOMEDIR + "/hapmap_3.3.hg38.vcf.gz",
         omni_vcf = GENOMEDIR + "/1000G_omni2.5.hg38.vcf.gz",
         thousandG_vcf = GENOMEDIR + "/1000G_phase1.snps.high_confidence.hg38.vcf.gz",
         dbsnp_vcf = GENOMEDIR + "/Homo_sapiens_assembly38.dbsnp138.vcf",
-        java_opts = "-Xmx4g -Xms4g"
+        java_opts = "-Xmx50g -Xms50g"
     container:
         "docker://broadinstitute/gatk:4.1.9.0"
     shell:
@@ -130,11 +125,11 @@ rule VQSR_snp:
 
 rule filter_indel:
     input:
-        vcf = "raw_vcf/{chromosome}.vcf.gz",
-        recal = "VQSR/indel/{chromosome}.recal",
-        tranches = "VQSR/indel/{chromosome}_indel.tranches"
+        vcf = "VQSR_all/FD_10L_raw.vcf.gz",
+        recal = "VQSR_all/indel/FD_10L.recal",
+        tranches = "VQSR_all/indel/FD_10L.tranches"
     output:
-        temp("filtered_vcf/indel_{chromosome}.vcf.gz")
+        temp("filtered_vcf/FD_10L_indel.vcf.gz")
     params:
         java_opts = "-Xmx5g -Xms5g"
     container:
@@ -154,11 +149,11 @@ rule filter_indel:
 
 rule filter_snp:
     input:
-        vcf = "filtered_vcf/indel_{chromosome}.vcf.gz",
-        recal = "VQSR/snp/{chromosome}.recal",
-        tranches = "VQSR/snp/{chromosome}.tranches"
+        vcf = "filtered_vcf/FD_10L_indel.vcf.gz",
+        recal = "VQSR_all/snp/FD_10L.recal",
+        tranches = "VQSR_all/snp/FD_10L.tranches"
     output:
-        "filtered_vcf/{chromosome}.vcf.gz"
+        "filtered_vcf/FD_10L.vcf.gz"
     params:
         java_opts = "-Xmx5g -Xms5g"
     container:

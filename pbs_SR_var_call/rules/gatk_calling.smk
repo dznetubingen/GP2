@@ -126,7 +126,7 @@ rule GenomicsDB_import:
     params:
         chr = "{chromosome}",
         ref = config["resources"]["genome"]
-        #java_opts = "-Xmx4g -Xms4g -Djava.io.tmpdir=tmp_scratch"
+        java_opts = "-Xmx4g -Xms4g"
     container:
         "docker://broadinstitute/gatk:4.1.9.0"
     shell:
@@ -134,11 +134,14 @@ rule GenomicsDB_import:
         " <(echo {input}|xargs -n 1 basename -s \"_{params.chr}.g.vcf.gz\") " +
         " <(echo {input}|tr ' ' '\\n' ) > {output.samp_map} \n " +
         """
-        gatk GenomicsDBImport \
+        gatk --java-options "{params.java_opts}" \
+             GenomicsDBImport \
              --sample-name-map {output.samp_map} \
              --genomicsdb-workspace-path {output.db_dir} \
              -L {params.chr} \
-             -R {params.ref}
+             -R {params.ref} \
+             --tmp-dir=./tmp_scratch 
+             --reader-threads 5
         """
 
 rule Joint_Genotyping:
@@ -148,14 +151,21 @@ rule Joint_Genotyping:
         "raw_vcf/{chromosome}.vcf.gz"
     params:
         chr = "{chromosome}",
-        ref = config["resources"]["genome"]
+        ref = config["resources"]["genome"],
+        dbsnp =  GENOMEDIR + "/Homo_sapiens_assembly38.dbsnp138.vcf",
+        java_opts = "-Xmx5g -Xms5g"
     container:
         "docker://broadinstitute/gatk:4.1.9.0"
     shell:
         """
-        gatk GenotypeGVCFs \
+        gatk --java-options "{params.java_opts}" \
+             GenotypeGVCFs \
              -R {params.ref} \
              -L {params.chr} \
+             -D {params.dbsnp} \
              -O {output} \
+             -G StandardAnnotation \
+             --only-output-calls-starting-in-intervals \
+             --use-new-qual-calculator \
              -V gendb://{input}
         """

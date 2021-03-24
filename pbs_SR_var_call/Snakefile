@@ -2,9 +2,11 @@
 import glob
 import os
 
-include: "rules/qc_fastq.smk"
-include: "rules/align.smk"
-include: "rules/haplotype_caller.smk"
+#include: "rules/qc_split.smk"
+#include: "rules/align.smk"
+#include: "rules/gatk_calling.smk"
+#include: "rules/var_filter.smk"
+include: "rules/smallset_var_filter.smk"
 
 #create tmpdir by yourself as $TMPDIR is shared with all the jobs on the drive, sometimes there's not enough space
 if not os.path.exists("tmp_scratch"):
@@ -25,14 +27,16 @@ chr_id= ["chr" + str(i) for i in chr_list]
 
 
 singularity: "docker://continuumio/miniconda3"
-localrules: multiqc, all
+#localrules: multiqc, all
+localrules: all
 
 rule all:
     input:
-        "qc/multiqc.html",
-        expand("alignment/{sample}.bam", sample=SAMPLES),
-        expand("stats/{sample}_aln.stats", sample=SAMPLES),
-        expand("stats/{sample}.metrics.txt", sample=SAMPLES),
-        expand("bam_recal/{sample}_recal.table", sample=SAMPLES),
-        expand("raw_vcf/{chromosome}.vcf.gz",chromosome=chr_id, sample=SAMPLES)
-        
+#        "qc/multiqc.html",
+#        expand("alignment/{sample}.bam", sample=SAMPLES),
+#        expand("stats/{sample}_aln.stats", sample=SAMPLES),
+#        expand("stats/{sample}.metrics.txt", sample=SAMPLES),
+#        expand("bam_recal/{sample}_recal.table", sample=SAMPLES)
+#        expand("raw_vcf/{chromosome}.vcf.gz",chromosome=chr_id, sample=SAMPLES),
+#        expand("filtered_vcf/{chromosome}.vcf.gz", chromosome=chr_id, sample=SAMPLES)
+         "filtered_vcf/FD_10L.vcf.gz"  

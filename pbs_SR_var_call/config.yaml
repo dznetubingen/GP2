@@ -1,0 +1,4 @@
+resources:
+        genomedir: /beegfs/work/workspace/ws/tu_knkph01-short_read-0/SR_var_call/google_hg38
+        fastqdir: /beegfs/work/workspace/ws/tu_knkph01-short_read-0/SR_var_call/fastq
+        genome: /beegfs/work/workspace/ws/tu_knkph01-short_read-0/SR_var_call/google_hg38/Homo_sapiens_assembly38.fasta
