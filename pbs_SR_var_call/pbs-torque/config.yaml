@@ -1,7 +1,7 @@
 #cluster: "pbs-submit.py"
 #cluster-status: "pbs-status.py"
 #jobscript: "pbs-jobscript.sh"
-cluster-config: "fangz_profile/pbs-torque/cluster_config.yml"
+cluster-config: "pbs-torque/cluster_config.yml"
 cluster: "qsub -N {cluster.jobname} -l nodes={cluster.nodes}:ppn={cluster.ppn},mem={cluster.mem},walltime={cluster.walltime} -q {cluster.queue} -M {cluster.email} -m {cluster.mailon} -j {cluster.jobout} -o {cluster.outdir} -V"
 jobs: 100
 immediate-submit: False
