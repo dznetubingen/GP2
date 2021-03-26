@@ -7,7 +7,7 @@ configfile: "config.yaml"
 FASTQDIR = config["resources"]["fastqdir"]
 VCF = config["resources"]["vcf"]
 REF = config["resources"]["reference"]
-BAM = "../pipeline-structural-variation/alignment/{sample}_lra.bam"
+BAM = "{FASTQDIR}/{sample}_win/alignment/{sample}_win.bam"
 sample = config["resources"]["sample"]
 rule phasing:
     input:
@@ -17,9 +17,9 @@ rule phasing:
     output:
         directory("{FASTQDIR}/whatshap_output")
     singularity:
-        "../singularityIMG/long_read_tools.simg"
+        "docker://avalillarionova/lrp_tools:latest"
     threads: 15
     shell:
         """
-	whatshap phase -o {output}/phased.vcf --reference={input.ref} {input.vcf} {input.bam}
+	whatshap phase -o {output}/phased_winnowmap.vcf --reference={input.ref} {input.vcf} {input.bam}
 	"""

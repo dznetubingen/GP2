@@ -1,14 +1,22 @@
+# available options to run 'dna', 'rna', 'asts'
+
 resources:
     fast5dir: /fast5
     fastqdir: /fastq
     sample: "sample"
     vcf: /illumina.vcf
-#reads_manifest: /reads_manifest.tsv  #tab-delimited file containing the sample name, condition, batch*, and path to reads.fq/fa
     reference: /reference.fa
     annotation: /annotation.gtf
     guppy_config: 'dna_r9.4.1_450bps_hac_prom.cfg'
-    mode: 'dna'  # available options| 'dna', 'rna', 'asts'
     sv_detection: 'run'
     flair: 'run'
     phasing: 'run'
-    epygenetics: 'run'
+    epigenetics: 'run'
+
+survivor_parameters:
+    max_distance = 500 # Max distance between breakpoints (0-1 percent of length, 1- number of bp)
+    min_call = 1 # Minimum number of supporting caller
+    svtype = 1 #Take the type into account (1==yes, else no)
+    strand = 1 #Take the strands of SVs into account (1==yes, else no)
+    min_size = 30 #Minimum size of SVs to be taken into account  
+

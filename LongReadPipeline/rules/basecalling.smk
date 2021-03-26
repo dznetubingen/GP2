@@ -21,10 +21,10 @@ rule guppy:
     resources:
         nvidia_gpu=1
     singularity:
-        "../singularityIMG/guppy-gpu-4.4.1.simg"
+        "docker://genomicpariscentre/guppy-gpu:4.4.1"
     shell:
         """
-        guppy_basecaller --compress_fastq -i {input} --recursive \
+        guppy_basecaller --compress_fastq -i {input} \
                 --save_path {output} \
                 --num_callers {threads} \
                 -c {params.config_file} \

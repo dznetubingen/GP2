@@ -7,38 +7,41 @@ if not os.path.exists("log"):
 	
 configfile: "config.yaml"
 
-MODE = config["resources"]["mode"]
 FASTQDIR = config["resources"]["fastqdir"]
 SV = config["resources"]["sv_detection"]
 FLAIR = config["resources"]["flair"]
 PH = config["resources"]["phasing"] 
-Epy = config["resources"]["epygenetics"]
-
-if MODE == 'dna':
-    include: "rules/basecalling.smk",
-    include: "rules/qc.smk"
-        if SV == 'run':
-            include: "pipeline-structural-variation/Snakefile"
-        if Epy == 'run':
-            include:  "rules/nanopolish.smk"
-        if PH == 'run':
-            include: "rules/phasing.smk"
-    
-elif MODE == 'rna':
-    include: "rules/basecalling.smk",
-    include: "rules/qc.smk",
-    include: "rules/pychopper.smk"
-        if FLAIR == 'run':
-            include: "rules/flair.smk"
-
-elif MODE == 'asts':
-    include: "lorals/Snakefile" 
-   
-else:
-    print("Unavailable mode")
+Epi = config["resources"]["epigenetics"]
 
 
-rule all:
+rule dna:
     input:
-        expand("{fastqdir}/all_pass_reads.fastq.gz", fastqdir = FASTQDIR),
-        expand("{fastqdir}/Nanoplot", fastqdir = FASTQDIR)
+        expand("{FASTQDIR}/Q7_pass_reads.fastq.gz"),
+        expand("{FASTQDIR}/Nanoplot")
+        if Epi == 'run':
+            expand("{FASTQDIR}/nanopolish_output")
+        if SV == 'run':
+            if ALIGNER == 'lra':
+                expand("{FASTQDIR}/{sample}_lra/sv_calls/{sample}_cutesv_filtered.vcf.gz"),
+                expand("{FASTQDIR}/{sample}_lra/alignment/{sample}_lra.bam"),
+                expand("{FASTQDIR}/{sample}_lra/qc")
+            if ALIGNER == 'win':
+                expand("{FASTQDIR}/{sample}_win/sv_calls/{sample}_cutesv_filtered.vcf.gz"),
+                expand("{FASTQDIR}/{sample}_win/alignment/{sample}_win.bam"),
+                expand("{FASTQDIR}/{sample}_win/qc")
+            if ALIGNER == 'both':
+                expand("{FASTQDIR}/{sample}_lra/sv_calls/{sample}_cutesv_filtered.vcf.gz"),
+                expand("{FASTQDIR}/{sample}_lra/alignment/{sample}_lra.bam"),
+                expand("{FASTQDIR}/{sample}_lra/qc")
+                expand("{FASTQDIR}/{sample}_win/sv_calls/{sample}_cutesv_filtered.vcf.gz"),
+                expand("{FASTQDIR}/{sample}_win/alignment/{sample}_win.bam"),
+                expand("{FASTQDIR}/{sample}_win/qc"),
+                expand("{FASTQDIR}/{sample}/sv_calls/{sample}_cutesv_filtered.vcf.gz")
+        if PH == 'run':
+            expand("{FASTQDIR}/whatshap_output")
+
+rule rna:
+    input:
+        expand("{FASTQDIR}/Q7_pass_reads.fastq.gz"),
+        expand("{FASTQDIR}/Nanoplot"),
+        expand("{FASTQDIR}/pychopper_output")

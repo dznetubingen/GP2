@@ -1,0 +1,6 @@
+name: whatshap
+channels:
+  - bioconda
+
+dependencies:
+  - whatshap

@@ -6,9 +6,8 @@ configfile: "config.yaml"
 
 FAST5DIR=config["resources"]["fast5dir"]
 FASTQDIR = config["resources"]["fastqdir"]
-BAM = "../pipeline-structural-variation/alignment/{sample}_lra.bam"
+BAM = "{FASTQDIR}/{sample}_win/alignment/{sample}_win.bam"
 REF = config["resources"]["reference"]
-
 
 rule phasing:
     input:
@@ -19,7 +18,7 @@ rule phasing:
     output:
         directory("{FASTQDIR}/nanopolish_output")
     singularity:
-        "../singularityIMG/long_read_tools.simg"
+        "docker://avalillarionova/lrp_tools:latest"
     threads: 15
     shell:
         """
