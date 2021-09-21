@@ -13,8 +13,8 @@
 - calculate genotype counts in GP2 cohort 
 4. Add CADD scores, genotype counts for each variant in GP2 cohort and AMP-PD cases, topmed freq as well as gnomAD freq and nhomalt (number of alternative homozygous) to vcf INFO for downstream filtering
 
-** Filtering** (here [slivar](https://github.com/brentp/slivar) is used):
-5. Global filter by gnomAD_nhomalt < 5
+**Filtering** (here [slivar](https://github.com/brentp/slivar) is used):
+Global filter by gnomAD_nhomalt < 10 and gnomAD_af < 0.05
 
 For each family (see [rule slivar_filter](https://github.com/dznetubingen/GP2/blob/710b391b1b57d3f335441d46370b5c1b3f8df7b2/rules/slivar_filter.smk) for the commands):
 - (segragating) recessive (gnomAD_af < 0.05, all the affected individuals are alternative homozygous)
@@ -31,4 +31,4 @@ For each family (see [rule slivar_filter](https://github.com/dznetubingen/GP2/bl
 
 **To do:**
 Function for checking variants that segragate across families
-
+Re-calculate genotype counts for AMP-PD cases
