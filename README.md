@@ -4,7 +4,7 @@
 
 ## Steps:
 **Prepare variants for filtering to obtain candidate causal vairants:**
-
+[commands](https://github.com/dznetubingen/GP2/blob/d71ac897f1ce9b195279fb06e43c4e4388df4eed/Snakefile)
 1. Normalize indels and split multialleic variants (see [explanation](https://genome.sph.umich.edu/wiki/Variant_Normalization))
 2. Split the vcf by chromosome for parallel processing 
 3. For the vairants on each chromosome: 
