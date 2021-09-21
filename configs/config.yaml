@@ -1,0 +1,2 @@
+ref_genome: vep_annotation/Homo_sapiens_assembly38.fasta
+ped: ped/GP2_trimmed.ped
