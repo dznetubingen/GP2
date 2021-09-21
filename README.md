@@ -16,7 +16,7 @@
 ** Filtering (here [slivar](https://github.com/brentp/slivar) is used):**
 5. Global filter by gnomAD_nhomalt < 5
 
-For each family (see [rule slivar_filter][https://github.com/dznetubingen/GP2/blob/710b391b1b57d3f335441d46370b5c1b3f8df7b2/rules/slivar_filter.smk] for the commands):
+For each family (see [rule slivar_filter](https://github.com/dznetubingen/GP2/blob/710b391b1b57d3f335441d46370b5c1b3f8df7b2/rules/slivar_filter.smk) for the commands):
 - (segragating) recessive (gnomAD_af < 0.05, all the affected individuals are alternative homozygous)
 - (segragating) dominant (gnomAD_af < 0.01, all the affected individuals are heterozygous)
 - x-reccessive (same as segratating recessive)
@@ -26,7 +26,7 @@ For each family (see [rule slivar_filter][https://github.com/dznetubingen/GP2/bl
 ** Check [slivar-function.js](https://github.com/dznetubingen/GP2/blob/710b391b1b57d3f335441d46370b5c1b3f8df7b2/slivar-functions.js) for the function expression
 
 
-![Workflow](https://github.com/dznetubingen/GP2/blob/710b391b1b57d3f335441d46370b5c1b3f8df7b2/rulegraph.pdf)
+[Workflow visulization](https://github.com/dznetubingen/GP2/blob/710b391b1b57d3f335441d46370b5c1b3f8df7b2/rulegraph.pdf)
 
 
 
