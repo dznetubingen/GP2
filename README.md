@@ -29,4 +29,6 @@ For each family (see [rule slivar_filter](https://github.com/dznetubingen/GP2/bl
 [Workflow visulization](https://github.com/dznetubingen/GP2/blob/710b391b1b57d3f335441d46370b5c1b3f8df7b2/rulegraph.pdf)
 
 
+**To do:**
+Function for checking variants that segragate across families
 
