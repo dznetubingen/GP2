@@ -3,7 +3,7 @@
 **Input: The output (vcf file) from jointgenotyping workflow (Terra)**
 
 ## Steps:
-**1. Prepare variants for filtering to obtain candidate causal vairants:**
+**Step 1. Prepare variants for filtering to obtain candidate causal vairants:**
 [commands](https://github.com/dznetubingen/GP2/blob/d71ac897f1ce9b195279fb06e43c4e4388df4eed/Snakefile)
 1. Normalize indels and split multialleic variants (see [explanation](https://genome.sph.umich.edu/wiki/Variant_Normalization))
 2. Split the vcf by chromosome for parallel processing 
@@ -14,7 +14,7 @@
 -  d. Add CADD scores, genotype counts for each variant in GP2 cohort and AMP-PD cases, topmed freq as well as gnomAD freq and nhomalt (number of alternative homozygous) to vcf INFO for downstream filtering
 4. Merge vcfs to a cohort vcf
 
-**2. Split the vcf to single-family vcfs:**
+**Step 2. Split the vcf to single-family vcfs:**
 **Filtering** (here [slivar](https://github.com/brentp/slivar) is used):
 Global filter by gnomAD_nhomalt < 10 and gnomAD_af < 0.05
 
