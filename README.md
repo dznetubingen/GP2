@@ -8,11 +8,11 @@
 1. Normalize indels and split multialleic variants (see [explanation](https://genome.sph.umich.edu/wiki/Variant_Normalization))
 2. Split the vcf by chromosome for parallel processing 
 3. For the vairants on each chromosome: 
-- annotate the vcf with vep and split the vep annotation with [bcftools +split-vep](https://samtools.github.io/bcftools/howtos/plugin.split-vep.html) 
-- calculate CADD scores
-- calculate genotype counts in GP2 cohort 
-4. Add CADD scores, genotype counts for each variant in GP2 cohort and AMP-PD cases, topmed freq as well as gnomAD freq and nhomalt (number of alternative homozygous) to vcf INFO for downstream filtering
-
+  a. annotate the vcf with vep and split the vep annotation with [bcftools +split-vep](https://samtools.github.io/bcftools/howtos/plugin.split-vep.html) 
+  b. calculate CADD scores
+  c. calculate genotype counts in GP2 cohort 
+  d. Add CADD scores, genotype counts for each variant in GP2 cohort and AMP-PD cases, topmed freq as well as gnomAD freq and nhomalt (number of alternative homozygous) to vcf INFO for downstream filtering
+4. Merge vcfs to a cohort vcf
 
 **2. Split the vcf to single-family vcfs:**
 **Filtering** (here [slivar](https://github.com/brentp/slivar) is used):
