@@ -12,7 +12,7 @@ shell.prefix("set -o pipefail; umask 002; ")  # set g+w
 
 ##include rules
 include: "rules/CADD.smk"
-include: "rules/slivar_filter.smk"
+include: "rules/filter_per_fam.smk"
 
 #Snakemake config
 min_version("5.5")
@@ -28,33 +28,35 @@ rule all:
         expand("final_vcfs/{chromosome}.vcf.gz", chromosome = chr_id),
         "final_vcfs/GP2_annotate.vcf.gz",
         "bfiles/all_chrs_merged.bed",
-        "short_list/all_chrs.tsv"
+#        "concordance/gp2_wgs_reduced_booster.pgen"
+        expand("reports/{famID}_{varlist}.tsv", famID=FAM, varlist=['genic_tier1','genic_tier2','nongenic'])
 
 rule bcftools_norm:
     input:
-        "gp2.vcf.gz"
+        "input_vcfs/gp2.vcf.gz"
     output:
-        temp("gp2_norm.vcf.gz")
+        temp("vcfs/gp2_norm.vcf.gz")
     threads:
         20
     conda:
         "envs/tools.yml"
     shell:
        """
-       bcftools norm \
+       bcftools view -Ou -s ^MH00724-TRO {input} \
+       | bcftools norm \
         -f {config[ref_genome]} \
         --threads {threads} \
         -m - \
         -O z \
         --output {output} \
-        {input} && tabix -p vcf --force {output} 
+        && tabix -p vcf --force {output} 
        """
 
 rule split_by_chr:
     input:
         vcf= rules.bcftools_norm.output
     output:
-        temp("vcfs_chr/{chromosome}.vcf.gz")
+        temp("vcfs/per_chr/{chromosome}.vcf.gz")
     params:
         chr = "{chromosome}"
     container:
@@ -74,11 +76,11 @@ rule split_by_chr:
 
 rule vep:
     input:
-        vcf = "vcfs_chr/{chromosome}.vcf.gz"
+        vcf = rules.split_by_chr.output
     output:
-        vcf = temp("vcf_vep/{chromosome}.vcf.gz")
+        vcf = temp("vcfs/per_chr/vep/{chromosome}.vcf.gz")
     container:
-        "docker://ensemblorg/ensembl-vep:release_104.3"
+        "docker://ensemblorg/ensembl-vep:release_105.0"
     threads: 10
     resources:
         nodes = 1
@@ -116,14 +118,15 @@ rule vep:
         --offline \
         --dir_cache /opt/vep/.vep  \
         --dir_plugins /opt/vep/.vep/Plugins/ \
-        --plugin UTRannotator,./vep_annotation/uORF_5UTR_GRCh38_PUBLIC.txt \
-        --plugin SpliceAI,snv=./vep_annotation/spliceai_scores.raw.snv.hg38.vcf.gz,indel=./vep_annotation/spliceai_scores.raw.indel.hg38.vcf.gz \
+        --plugin UTRannotator,/opt/vep/.vep/vep_annotation/uORF_5UTR_GRCh38_PUBLIC.txt \
+        --plugin SpliceAI,snv=/opt/vep/.vep/vep_annotation/spliceai_scores.raw.snv.hg38.vcf.gz,indel=/opt/vep/.vep/vep_annotation/spliceai_scores.raw.indel.hg38.vcf.gz \
         --plugin SpliceRegion,Extended \
         --plugin MaxEntScan,/opt/vep/.vep/Plugins/maxEntScan \
-        --plugin LoFtool,./vep_annotation/LoFtool_scores.txt \
+        --plugin LoFtool,/opt/vep/.vep/vep_annotation/LoFtool_scores.txt \
         --plugin TSSDistance \
-        --plugin DisGeNET,file=./vep_annotation/all_variant_disease_pmid_associations_final.tsv.gz \
-        --plugin dbNSFP,./vep_annotation/dbNSFP4.2a_grch38.gz,MetaRNN_score,LRT_score,GERP++_RS,FATHMM_score,fathmm-MKL_coding_score,DANN_score,REVEL_score,PrimateAI_score,clinvar_id,clinvar_clnsig,clinvar_trait,clinvar_MedGen_id,clinvar_OMIM_id,Geuvadis_eQTL_target_gene,gnomAD_genomes_controls_and_biobanks_nhomalt \
+        --plugin NMD \
+        --plugin DisGeNET,file=/opt/vep/.vep/vep_annotation/all_variant_disease_pmid_associations_final.tsv.gz \
+        --plugin dbNSFP,/opt/vep/.vep/vep_annotation/dbNSFP4.2a_grch38.gz,Ensembl_transcriptid,MetaRNN_score,LRT_score,GERP++_RS,FATHMM_score,fathmm-MKL_coding_score,DANN_score,REVEL_score,PrimateAI_score,clinvar_id,clinvar_clnsig,clinvar_trait,clinvar_MedGen_id,clinvar_OMIM_id,Geuvadis_eQTL_target_gene,gnomAD_genomes_controls_and_biobanks_nhomalt \
         -o {output.vcf} \
         --compress_output bgzip \
         --fork {threads} \
@@ -135,7 +138,7 @@ rule split_vep:
     input:
        vcf = rules.vep.output
     output:
-        temp("split_vep/{chromosome}.vcf.gz")
+        temp("vcfs/per_chr/split_vep/{chromosome}.vcf.gz")
     conda:
         "envs/tools.yml"
     threads: 5
@@ -164,7 +167,7 @@ rule split_vep:
 
 rule prep_vcf_CADD:
     input:
-        vcf = "vcfs_chr/{chromosome}.vcf.gz",
+        vcf = rules.split_by_chr.output,
     output:
         temp("CADD_input/{chromosome}.vcf")
     threads: 1
@@ -175,86 +178,71 @@ rule prep_vcf_CADD:
         zcat {input} | awk '{{gsub(/^chr/,""); print}}' > {output}
         """
 
-rule geno_count:
+rule gcount_case_control:
     input:
-        vcf= "vcfs_chr/{chromosome}.vcf.gz"
+        vcf = rules.split_by_chr.output,
+        tfam = "input_vcfs/gp2_all.tfam"
     output:
-        "gp2_gcount/{chromosome}.gcount.gz"
-    params:
-        chr = "{chromosome}"
+        temp("vcfs/gcount/{chromosome}.vcf")
     conda:
         "envs/tools.yml"
-    threads: 5
     resources:
         nodes = 1
     shell:
         """
-        plink2 --vcf {input.vcf} \
-             --threads {threads} \
-             --geno-counts cols=chrom,pos,ref,alt,homref,refalt,altxy,missing \
-             --out gp2_gcount/{params.chr} &&
-         bgzip gp2_gcount/{params.chr}.gcount && tabix -s1 -b2 -e2 --force {output}     
+        #get n of homalt, n of het and allele count in cases and controls
+        SnpSift caseControl -tfam {input.tfam} {input.vcf} > {output}
+
         """
 
 
 rule add_anno_vcf:
     input:
-        vcf = "split_vep/{chromosome}.vcf.gz",
+        vcf = rules.split_vep.output,
         vcfanno_conf = "vcfanno_conf/vcfanno_{chromosome}.conf",
         CADD_score= "CADD/{chromosome}.tsv.gz",
-        geno_count="gp2_gcount/{chromosome}.gcount.gz"
+        gcount = rules.gcount_case_control.output
     output:
-        "vcfs_vcfanno/{chromosome}.vcf.gz"
+        count_vcf= temp("vcfs/gcount/{chromosome}.vcf.gz"),
+        anno_vcf=temp("vcfs/vcfanno/{chromosome}.vcf.gz")
     conda:
         "envs/tools.yml"
     threads: 5
     resources:
         nodes = 1
     shell:
-        """
+        """ 
+        bgzip {input.gcount} && tabix -p vcf --force {output.count_vcf} &&
         vcfanno -p {threads} {input.vcfanno_conf} {input.vcf} \
-        | bgzip -c > {output} && tabix -p vcf --force {output}
+        | bgzip -c > {output.anno_vcf} && tabix -p vcf --force {output.anno_vcf}
         """
 
 rule slivar_gnotate:
     input:
-        vcf = "vcfs_vcfanno/{chromosome}.vcf.gz"
+        vcf = "vcfs/vcfanno/{chromosome}.vcf.gz"
     output:
-        temp("final_vcfs/{chromosome}.vcf")
-    container:
-        "docker://brentp/slivar:v0.2.5"
-    threads: 1
+        "final_vcfs/{chromosome}.vcf.gz"
+    conda:
+        "envs/tools.yml"
+    threads: 
+        1 
     resources:
         nodes = 1
     shell:
         """ 
         slivar expr --js slivar/slivar-functions.js \
                     --pass-only \
-                    -g slivar/gnomad.hg38.genomes.v3.fix.zip \
+                    -g slivar/gnomad.hg38.v3.custom.zip \
                     -g slivar/topmed.hg38.dbsnp.151.zip \
                     --info 'variant.ALT[0] != "*"' \
                     --vcf {input.vcf}  \
-                    -o  {output}
+        | bgzip -c > {output} && tabix -p vcf --force {output}
         """
 
-rule tabix: 
-    input: 
-        "final_vcfs/{chromosome}.vcf"
-    output:
-        "final_vcfs/{chromosome}.vcf.gz"
-    conda:
-        "envs/tools.yml"
-    threads: 1
-    resources:
-        nodes = 1
-    shell:
-        """
-        bgzip {input} && tabix -p vcf {output}
-        """
 
 rule plink_bfiles:
     input:
-        vcf= "vcfs_chr/{chromosome}.vcf.gz"
+        vcf= rules.split_by_chr.output
     output:
         "bfiles/{chromosome}.bed"
     params:
@@ -267,6 +255,8 @@ rule plink_bfiles:
     shell:
         """
         plink2 --vcf {input.vcf} \
+             --set-all-var-ids @:#:\$r-\$a \
+             --new-id-max-allele-len 50 missing \
              --threads {threads} \
              --make-bed \
              --out bfiles/{params.chr}
@@ -287,7 +277,7 @@ rule Gathervcf:
         bcftools concat {input} \
                  --threads {threads} \
                  -O z \
-                 -o {output} && tabix -p vcf {output}
+                 -o {output} && tabix -p vcf --force {output}
          
         """
 
@@ -298,13 +288,57 @@ rule plink_gather:
         "bfiles/all_chrs_merged.bed"
     conda:
         "envs/tools.yml"
-    threads: 5
+    threads: 20
     resources:
         nodes = 1
     shell:
         """
         plink2 --vcf {input.vcf} \
              --threads {threads} \
+             --set-all-var-ids @:#:\$r-\$a \
+             --new-id-max-allele-len 50 missing \
              --make-bed \
              --out bfiles/all_chrs_merged
+        """
+
+
+rule plink_pfiles:
+    input:
+        vcf= "final_vcfs/GP2_annotate.vcf.gz"
+    output:
+        "concordance/all_chrs_merged.pgen"
+    conda:
+        "envs/tools.yml"
+    threads: 20
+    resources:
+        nodes = 1
+    shell:
+        """
+        plink2 --vcf {input.vcf} \
+             --threads {threads} \
+             --set-all-var-ids @:#-\$r-\$a \
+             --new-id-max-allele-len 50 missing \
+             --make-pgen \
+             --out concordance/all_chrs_merged
+        """
+
+rule plink2_wgs_reduced:
+    input:
+        pgen= "concordance/all_chrs_merged.pgen",
+        booster_snp= "concordance/extract_booster_snp.txt"
+    output:
+        "concordance/gp2_wgs_reduced_booster.pgen"
+    conda:
+        "envs/tools.yml"
+    threads: 20
+    params: "concordance/all_chrs_merged"
+    resources:
+        nodes = 1
+    shell:
+        """
+        plink2 --pfile {params} \
+             --threads {threads} \
+             --extract {input.booster_snp} \
+             --make-pgen \
+             --out concordance/gp2_wgs_reduced2booster
         """

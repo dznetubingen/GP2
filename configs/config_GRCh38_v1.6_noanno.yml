@@ -7,17 +7,17 @@ GenomeBuild: GRCh38
 Annotation: false
 
 
-CADD_workdir: CADD-scripts
+CADD_workdir: /mnt/vol009/hg38_vep105/CADD-scripts
 
 # File parameter
-PrescoredFolder: CADD-scripts/data/prescored/GRCh38_v1.6/no_anno
+PrescoredFolder: /mnt/vol009/hg38_vep105/CADD-scripts/data/prescored/GRCh38_v1.6/no_anno
 ReferenceConfig: configs/references_GRCh38_v1.6.cfg
 ImputeConfig: configs/impute_GRCh38_v1.6.cfg
-Model: CADD-scripts/data/models/GRCh38/CADDv1.6-GRCh38.mod
-ConversionTable: CADD-scripts/data/models/GRCh38/conversionTable_CADDv1.6-GRCh38.txt
+Model: /mnt/vol009/hg38_vep105/CADD-scripts/data/models/GRCh38/CADDv1.6-GRCh38.mod
+ConversionTable: /mnt/vol009/hg38_vep105/CADD-scripts/data/models/GRCh38/conversionTable_CADDv1.6-GRCh38.txt
 
 # VEP
-VEPpath: CADD-scripts/data/annotations/GRCh38_v1.6/vep
+VEPpath: /mnt/vol009/hg38_vep105/CADD-scripts/data/annotations/GRCh38_v1.6/vep
 EnsemblDB: 95
 
 Columns: '1-4,133,134'

@@ -3,7 +3,8 @@ __pycache__/
 homo_sapiens/*
 CADD-scripts/*
 CADD/*
-vcf_vep/*
+input_vcfs/*
+vcfs/*
 vcfs_vcfanno/*
 vep_annotation/*
 vep_profile/*
@@ -18,9 +19,5 @@ scripts/*
 final_vcfs/*
 short_list/*
 README.md
-gp2.vcf.gz.tbi
-gp2.vcf.gz
-gp2_norm.vcf.gz.tbi
-gp2_norm.vcf.gz
 ped/*
 slivar/*

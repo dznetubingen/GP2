@@ -12,7 +12,7 @@ rule prepare:
     shell:
         '''
         cat {input} \
-        | python CADD_src_scripts/VCF2vepVCF.py \
+        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/VCF2vepVCF.py \
         | sort -k1,1 -k2,2n -k4,4 -k5,5 \
         | uniq > {output}
         '''        
@@ -32,7 +32,7 @@ rule prescore:
             for PRESCORED in $(ls {config[PrescoredFolder]}/*.tsv.gz)
             do
                 cat {input} \
-                | python CADD_src_scripts/extract_scored.py --header \
+                | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/extract_scored.py --header \
                     -p $PRESCORED --found_out={output.prescored}.tmp \
                 > {input}.tmp;
                 cat {output.prescored}.tmp >> {output.prescored}
@@ -55,7 +55,7 @@ rule annotation:
             --db_version={config[EnsemblDB]} --assembly {config[GenomeBuild]} \
             --format vcf --regulatory --sift b --polyphen b --per_gene --ccds --domains \
             --numbers --canonical --total_length --vcf --force_overwrite --output_file STDOUT \
-        | python CADD_src_scripts/annotateVEPvcf.py \
+        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/annotateVEPvcf.py \
             -c {config[ReferenceConfig]} \
         | gzip -c > {output}
         '''
@@ -67,7 +67,7 @@ rule imputation:
     shell:
         '''
         zcat {input} \
-        | python CADD_src_scripts/trackTransformation.py -b \
+        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/trackTransformation.py -b \
             -c {config[ImputeConfig]} -o {output} --noheader;
         '''
 
@@ -79,10 +79,10 @@ rule score:
     conda: '../envs/CADD.yml'
     shell:
         '''
-        python CADD_src_scripts/predictSKmodel.py \
+        python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/predictSKmodel.py \
             -i {input.impute} -m {config[Model]} -a {input.anno} \
-        | python CADD_src_scripts/max_line_hierarchy.py --all \
-        | python CADD_src_scripts/appendPHREDscore.py \
+        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/max_line_hierarchy.py --all \
+        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/appendPHREDscore.py \
             -t {config[ConversionTable]} > {output};
     
         if [ "{config[Annotation]}" = 'False' ]
