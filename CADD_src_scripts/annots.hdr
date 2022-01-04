@@ -1,2 +1,0 @@
-##INFO=<ID=CADD_RAW,Number=1,Type=Float,Description="Raw CADD score">
-##INFO=<ID=CADD_PHRED,Number=1,Type=Float,Description="PHRED-like scaled CADD score">

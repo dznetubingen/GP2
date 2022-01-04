@@ -33,7 +33,7 @@ rule all:
 
 rule bcftools_norm:
     input:
-        "input_vcfs/gp2.vcf.gz"
+        "inputs/gp2.vcf.gz"
     output:
         temp("vcfs/gp2_norm.vcf.gz")
     threads:
@@ -42,7 +42,7 @@ rule bcftools_norm:
         "envs/tools.yml"
     shell:
        """
-       bcftools view -Ou -s ^MH00724-TRO {input} \
+       bcftools view -f PASS -Ou -s ^MH00724-TRO {input} \
        | bcftools norm \
         -f {config[ref_genome]} \
         --threads {threads} \
@@ -71,6 +71,7 @@ rule split_by_chr:
           -V {input.vcf} \
           -L {params.chr} \
           --exclude-filtered true \
+          --exclude-non-variants true \
           -O {output}
         """
 
@@ -119,14 +120,15 @@ rule vep:
         --dir_cache /opt/vep/.vep  \
         --dir_plugins /opt/vep/.vep/Plugins/ \
         --plugin UTRannotator,/opt/vep/.vep/vep_annotation/uORF_5UTR_GRCh38_PUBLIC.txt \
-        --plugin SpliceAI,snv=/opt/vep/.vep/vep_annotation/spliceai_scores.raw.snv.hg38.vcf.gz,indel=/opt/vep/.vep/vep_annotation/spliceai_scores.raw.indel.hg38.vcf.gz \
+        --plugin SpliceAI,snv=/opt/vep/.vep/vep_annotation/spliceai_scores.masked.indel.hg38.vcf.gz,indel=/opt/vep/.vep/vep_annotation/spliceai_scores.masked.indel.hg38.vcf.gz \
         --plugin SpliceRegion,Extended \
         --plugin MaxEntScan,/opt/vep/.vep/Plugins/maxEntScan \
         --plugin LoFtool,/opt/vep/.vep/vep_annotation/LoFtool_scores.txt \
         --plugin TSSDistance \
         --plugin NMD \
         --plugin DisGeNET,file=/opt/vep/.vep/vep_annotation/all_variant_disease_pmid_associations_final.tsv.gz \
-        --plugin dbNSFP,/opt/vep/.vep/vep_annotation/dbNSFP4.2a_grch38.gz,Ensembl_transcriptid,MetaRNN_score,LRT_score,GERP++_RS,FATHMM_score,fathmm-MKL_coding_score,DANN_score,REVEL_score,PrimateAI_score,clinvar_id,clinvar_clnsig,clinvar_trait,clinvar_MedGen_id,clinvar_OMIM_id,Geuvadis_eQTL_target_gene,gnomAD_genomes_controls_and_biobanks_nhomalt \
+        --plugin dbNSFP,/opt/vep/.vep/vep_annotation/dbNSFP4.2a_grch38.gz,Ensembl_transcriptid,MetaRNN_score,LRT_score,GERP++_RS,FATHMM_score,fathmm-MKL_coding_score,DANN_score,REVEL_score,PrimateAI_score,Geuvadis_eQTL_target_gene,gnomAD_genomes_controls_and_biobanks_nhomalt \
+        --custom {config[clinvar]},ClinVar,vcf,exact,0,CLNSIG,CLNDN \
         -o {output.vcf} \
         --compress_output bgzip \
         --fork {threads} \
@@ -222,8 +224,8 @@ rule slivar_gnotate:
         vcf = "vcfs/vcfanno/{chromosome}.vcf.gz"
     output:
         "final_vcfs/{chromosome}.vcf.gz"
-    conda:
-        "envs/tools.yml"
+    container:
+        "docker://zihhuafang/slivar_modified:0.2.7"
     threads: 
         1 
     resources:
@@ -234,7 +236,7 @@ rule slivar_gnotate:
                     --pass-only \
                     -g slivar/gnomad.hg38.v3.custom.zip \
                     -g slivar/topmed.hg38.dbsnp.151.zip \
-                    --info 'variant.ALT[0] != "*"' \
+                    --info 'variant.ALT[0] != "*" && variant.call_rate > 0.95' \
                     --vcf {input.vcf}  \
         | bgzip -c > {output} && tabix -p vcf --force {output}
         """

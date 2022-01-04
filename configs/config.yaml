@@ -1,2 +1,3 @@
 ref_genome: /mnt/vep_annotation/Homo_sapiens_assembly38.fasta
-gp2_ped: input_vcfs/gp2_all.ped
+clinvar: /opt/vep/.vep/vep_annotation/clinvar_20211218.vcf.gz
+gp2_ped: inputs/gp2_all.ped

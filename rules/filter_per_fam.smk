@@ -8,8 +8,8 @@ from collections import defaultdict
 
 shell.prefix("set -o pipefail; umask 002; ")  # set g+w
 
-if not os.path.exists("logs"):
-    os.makedirs("logs")
+if not os.path.exists("slurm"):
+    os.makedirs("slurm")
 
 if not os.path.exists("short_list"):
     os.makedirs("short_list")
@@ -77,13 +77,13 @@ rule slivar_filter:
         nodes = 1
     run:
         if ped_dict[wildcards.famID] == 'trio':
-            shell("""singularity exec -B /mnt/vol009/GP2/vep:$HOME slivar_v0.2.7.sif \
+            shell("""singularity exec -B /mnt/vol009/GP2/vep:$HOME slivar_modified_0.2.7.sif \
                   slivar expr --vcf {input.vcf} \
                     --ped {input.ped} \
                     -o {output} \
                     --js slivar/slivar-functions.js \
                     --pass-only \
-                    --info 'variant.ALT[0] != "*" && variant.call_rate > 0.95 && INFO.gnomad_af < 0.05' \
+                    --info 'variant.ALT[0] != "*" && variant.call_rate > 0.95' \
                     --trio 'denovo:denovo(kid, mom, dad) && INFO.gnomad_nhomalt < 10' \
                     --trio 'x_denovo:x_denovo(kid, mom, dad) && INFO.gnomad_nhomalt < 10' \
                     --trio 'recessive:recessive(kid, mom, dad) && INFO.gnomad_nhomalt < 10' \
@@ -91,13 +91,13 @@ rule slivar_filter:
                     --trio 'comphet:comphet_side(kid, mom, dad)' && INFO.gnomad_nhomalt < 10
                   """)
         else:
-            shell("""singularity exec -B /mnt/vol009/GP2/vep:$HOME slivar_v0.2.7.sif \
+            shell("""singularity exec -B /mnt/vol009/GP2/vep:$HOME slivar_modified_0.2.7.sif \
                   slivar expr --vcf {input.vcf} \
                     --ped {input.ped} \
                     -o {output} \
                     --js slivar/slivar-functions.js \
                     --pass-only \
-                    --info 'variant.ALT[0] != "*" && variant.call_rate > 0.95 && INFO.gnomad_af < 0.05' \
+                    --info 'variant.ALT[0] != "*" && variant.call_rate > 0.95' \
                     --family-expr 'recessive:fam.every(segregating_recessive) && INFO.gnomad_nhomalt < 10' \
                     --family-expr 'x_recessive:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_recessive_x) && INFO.gnomad_nhomalt < 10' \
                     --family-expr 'denovo:fam.every(segregating_denovo) && INFO.gnomad_nhomalt < 10' \
@@ -144,7 +144,7 @@ rule slivar_comphet:
     params:
         skip = ",".join(skip_list)
     container:
-        "docker://brentp/slivar:v0.2.7"
+        "docker://zihhuafang/slivar_modified:0.2.7"
     resources:
         nodes = 1
     shell:
@@ -200,8 +200,16 @@ csq_columns= [
     'Amino_acids',
     'HGVSc',
     'HGVSp',
-    'clinvar_clnsig',
+    'ClinVar_CLNSIG',
+    'ClinVar_CLNDN'
     ]
+
+gene_descs= [
+    'slivar/pLI_lookup.txt',
+    'slivar/oe_lof_lookup.txt',
+    'slivar/clinvar_gene_desc.txt'
+    ]
+
 
 
 rule slivar_tsv:
@@ -212,9 +220,10 @@ rule slivar_tsv:
         "short_list/filtered_{famID}.tsv"
     params:
         info = "".join([f"--info-field {x} " for x in info_fields]),
-        csq = "".join([f"--csq-column {x} " for x in csq_columns])
+        csq = "".join([f"--csq-column {x} " for x in csq_columns]),
+        gene_desc = "".join([f"-g {x} " for x in gene_descs])
     container:
-        "docker://brentp/slivar:v0.2.7"
+        "docker://zihhuafang/slivar_modified:0.2.7"
     resources:
         nodes = 1
     shell:
@@ -231,8 +240,7 @@ rule slivar_tsv:
                -s x_dominant \
                -c CSQ \
                {params.csq} \
-               -g slivar/lof_lookup.txt \
-               -g slivar/clinvar_gene_desc.txt \
+               {params.gene_desc} \
                -p {input.ped} \
                {input.vcf} > {output}
         else
@@ -247,8 +255,7 @@ rule slivar_tsv:
                -s x_dominant \
                -c CSQ \
                {params.csq} \
-               -g slivar/lof_lookup.txt \
-               -g slivar/clinvar_gene_desc.txt \
+               {params.gene_desc} \
                -p {input.ped} \
                {input.vcf} > {output}        
         fi
@@ -262,9 +269,10 @@ rule comphet_tsv:
         "short_list/comphet_{famID}.tsv"
     params:
         info = "".join([f"--info-field {x} " for x in info_fields]),
-        csq = "".join([f"--csq-column {x} " for x in csq_columns])
+        csq = "".join([f"--csq-column {x} " for x in csq_columns]),
+        gene_desc = "".join([f"-g {x} " for x in gene_descs])
     container:
-        "docker://brentp/slivar:v0.2.7"
+        "docker://zihhuafang/slivar_modified:0.2.7"
     resources:
         nodes = 1
     shell:
@@ -275,8 +283,7 @@ rule comphet_tsv:
                -i genic \
                -c CSQ \
                {params.csq} \
-               -g slivar/lof_lookup.txt \
-               -g slivar/clinvar_gene_desc.txt \
+               {params.gene_desc} \
              -p {input.ped} \
              {input.vcf} \
              | {{ grep -v ^# || true; }} >> {output}
@@ -296,7 +303,7 @@ rule merge_tsv:
         # get header from first file and drop it from other files
         # and make sure slivar_comphet id is unique
         #awk 'NR == FNR || FNR > 1 {{ sub(/^slivar_comphet/, "slivar_comphet_"NR, $0); print; }}' {input.filtered} {input.comphet}
-        cat {input.filtered} {input.comphet} | sed '1 s/gene_description_1/lof/;s/gene_description_2/clinvar_trait/;' > {output}
+        cat {input.filtered} {input.comphet} | sed '1 s/gene_description_1/gnomAD_pLI/;s/gene_description_2/gnomAD_oe_lof/;s/gene_description_3/clinvar_gene_description/;' > {output}
         """
 rule report:
     input: 
@@ -306,4 +313,4 @@ rule report:
         genic_tier2="reports/{famID}_genic_tier2.tsv",
         nongenic= "reports/{famID}_nongenic.tsv"
     script:
-        "report_format.py"
+        "report_format_v2.py"
