@@ -19,3 +19,4 @@ vcfs/*
 vcfs_per_fam/*
 slivar_modified_0.2.7.sif
 README.md
+README_snakemake.md
