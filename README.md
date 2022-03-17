@@ -30,9 +30,7 @@ For each family (see [rule slivar_filter](https://github.com/dznetubingen/GP2/bl
 
 
 **Annotation resources**
-- gnomADv.3.1.0
-- TOPMEDv(dbSNP151)
-- VEP v.104
-
-##To do:
-slivar function to find segregating compound het
+- gnomADv.3.1.2
+- TOPMED freeze 8
+- VEP v.105
+- ClinVar: clinvar_20220313.vcf.gz
