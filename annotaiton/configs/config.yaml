@@ -1,0 +1,4 @@
+ref_genome: /mnt/vol009/hg38_vep105/vep_annotation/Homo_sapiens_assembly38.fasta
+docker_ref_genome: /mnt/vep_annotation/Homo_sapiens_assembly38.fasta
+clinvar: /opt/vep/.vep/vep_annotation/clinvar_20220313.vcf.gz
+gp2_ped: inputs/gp2_all.ped
