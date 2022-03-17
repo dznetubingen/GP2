@@ -1,4 +1,4 @@
-# This snakemake pipeline is for the annotation and filter for candidate variants
+# Snakemake pipeline for the annotation and filter for candidate variants for GP2 monogenic families
 
 **Input: The output (vcf file) from jointgenotyping workflow (Terra)**
 
@@ -15,12 +15,7 @@
 
 **Panel pre-screening:**
 **Filtering** (here [slivar](https://github.com/brentp/slivar) is used):
-For each family (see [rule slivar_filter](https://github.com/dznetubingen/GP2/blob/267ece759f00f88734d0247067f46c6b334dbb28/rules/filter_per_fam.smk)for the commands):
-- (segragating) recessive (gnomAD_nhomalt < 10, the affected individuals are alternative homozygous)
-- (segragating) dominant (gnomAD_af < 0.01, the affected individuals are heterozygous)
-- x-reccessive (same as segratating recessive)
-- x-denovo  (x-dominant)
-- compound-heterozygotes (gnomAD_nhomalt < 10)
+For each individual, we report the variants with gnomAD_AF < 5% in the PD gene panel  (see [rule panel](https://github.com/dznetubingen/GP2/blob/annotation/rules/gene_panel.smk)for the commands):
 
 **Segregation analysis. Split the GP2 cohort vcf to single-family vcfs to obtain candidate variants:**
 **Filtering** (here [slivar](https://github.com/brentp/slivar) is used):
