@@ -9,6 +9,7 @@ scripts/report_format.py
 scripts/report_format_v2.py
 scripts/report_format_v3.py
 scripts/seg_fam.py
+scripts/OMIM_search - Copy.R
 amp-pd-gcounts/*
 bfiles/*
 CADD/*
