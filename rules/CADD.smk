@@ -9,10 +9,11 @@ rule prepare:
     input: 'CADD_input/{chromosome}.vcf'
     output: temp('CADD_tmp/{chromosome}.prepared.vcf')
     conda: '../envs/CADD.yml'
+    threads: 1
     shell:
         '''
         cat {input} \
-        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/VCF2vepVCF.py \
+        | python {config[CADD_workdir]}/src/scripts/VCF2vepVCF.py \
         | sort -k1,1 -k2,2n -k4,4 -k5,5 \
         | uniq > {output}
         '''        
@@ -23,6 +24,7 @@ rule prescore:
         novel=temp('CADD_tmp/{chromosome}.novel.vcf'),
         prescored=temp('CADD_tmp/{chromosome}.pre.tsv')
     conda: '../envs/CADD.yml'
+    threads: 1
     shell:
         '''
         # Prescoring
@@ -32,7 +34,7 @@ rule prescore:
             for PRESCORED in $(ls {config[PrescoredFolder]}/*.tsv.gz)
             do
                 cat {input} \
-                | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/extract_scored.py --header \
+                | python {config[CADD_workdir]}/src/scripts/extract_scored.py --header \
                     -p $PRESCORED --found_out={output.prescored}.tmp \
                 > {input}.tmp;
                 cat {output.prescored}.tmp >> {output.prescored}
@@ -47,6 +49,7 @@ rule annotation:
     input: 'CADD_tmp/{chromosome}.novel.vcf'
     output: temp('CADD_tmp/{chromosome}.anno.tsv.gz')
     conda: '../envs/CADD.yml'
+    threads: 1
     shell:
         '''
         cat {input} \
@@ -55,7 +58,7 @@ rule annotation:
             --db_version={config[EnsemblDB]} --assembly {config[GenomeBuild]} \
             --format vcf --regulatory --sift b --polyphen b --per_gene --ccds --domains \
             --numbers --canonical --total_length --vcf --force_overwrite --output_file STDOUT \
-        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/annotateVEPvcf.py \
+        | python {config[CADD_workdir]}/src/scripts/annotateVEPvcf.py \
             -c {config[ReferenceConfig]} \
         | gzip -c > {output}
         '''
@@ -64,10 +67,11 @@ rule imputation:
     input: 'CADD_tmp/{chromosome}.anno.tsv.gz'
     output: temp('CADD_tmp/{chromosome}.csv.gz')
     conda: '../envs/CADD.yml'
+    threads: 1
     shell:
         '''
         zcat {input} \
-        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/trackTransformation.py -b \
+        | python {config[CADD_workdir]}/src/scripts/trackTransformation.py -b \
             -c {config[ImputeConfig]} -o {output} --noheader;
         '''
 
@@ -77,12 +81,13 @@ rule score:
         anno='CADD_tmp/{chromosome}.anno.tsv.gz'
     output: temp('CADD_tmp/{chromosome}.novel.tsv')
     conda: '../envs/CADD.yml'
+    threads: 1
     shell:
         '''
-        python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/predictSKmodel.py \
+        python {config[CADD_workdir]}/src/scripts/predictSKmodel.py \
             -i {input.impute} -m {config[Model]} -a {input.anno} \
-        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/max_line_hierarchy.py --all \
-        | python /mnt/vol009/hg38_vep105/CADD-scripts/src/scripts/appendPHREDscore.py \
+        | python {config[CADD_workdir]}/src/scripts/max_line_hierarchy.py --all \
+        | python {config[CADD_workdir]}/src/scripts/appendPHREDscore.py \
             -t {config[ConversionTable]} > {output};
     
         if [ "{config[Annotation]}" = 'False' ]
@@ -98,6 +103,7 @@ rule join:
         novel='CADD_tmp/{chromosome}.novel.tsv'
     output: 'CADD/{chromosome}.tsv.gz'
     conda: '../envs/CADD.yml'
+    threads: 1
     shell:
         '''
         (

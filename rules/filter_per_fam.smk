@@ -8,63 +8,117 @@ from collections import defaultdict
 
 shell.prefix("set -o pipefail; umask 002; ")  # set g+w
 
-if not os.path.exists("slurm"):
-    os.makedirs("slurm")
+# create directories that we need to store the outputs
+DIRs = ['vcfs_per_fam', 'short_list', 'reports', 'utr']
 
-if not os.path.exists("short_list"):
-    os.makedirs("short_list")
-
-if not os.path.exists("reports"):
-    os.makedirs("reports")
-
-
-#if not os.path.exists("vcfs_per_fam"):
-#     os.makedirs("vcfs_per_fam")
+for DIR in DIRs:
+    if not os.path.exists(DIR):
+        os.makedirs(DIR)
 
 configfile: "configs/config.yaml"
 
 ###make tfam file for each family
-df= pd.read_csv(config["gp2_ped"], sep="\t", header=None, names=["family_id","id","parental_id","maternal_id","sex","phenotype"])
-FAM= list(df.family_id.unique())
+df= pd.read_csv(config["gp2_ped"], sep='\t', header=None, names=['family_id','id','parental_id','maternal_id','sex','phenotype'])
 
-cohort=defaultdict(list,{ k:[] for k in ('singleton','duo','trio','multi') })
-for family, dataframe in df.groupby('family_id'):
-    if dataframe.shape[0] == 1:
-       cohort['singleton'].append(family)
-    elif dataframe.shape[0] == 2:
-        ## if parent ids are all 0 then not duo
-        if (dataframe.iloc[:,2:4]== "0").all(axis=None) or dataframe.iloc[:,-1].sum() == 4:
-            cohort['multi'].append(family)
-        else:
-            cohort['duo'].append(family)
-    elif dataframe.shape[0] == 3:
-        ## if parent ids are all 0 then not trio or parent(s) are affected
-        if not (dataframe.iloc[:,2:4]== "0").all(axis=None) and dataframe.iloc[:,-1].sum() ==4:
+cohort=defaultdict(list,{ k:[] for k in ('singleton','duo','group','trio','multi') })
+for family, dat in df.groupby('family_id'):
+    if (dat['phenotype'] == 1).all():
+        print(f"No affected samples in {family}.")
+    else:
+        if dat.shape[0] == 1:
+            cohort['singleton'].append(family)
+        elif dat.shape[0] == 2:
+        ## this is to deal with the other unaffected family member who is not a parent of the affected sample
+            if (dat.iloc[:,2:4]== "0").all(axis=None) and dat.iloc[:,-1].sum() == 3:
+                cohort['group'].append(family)
+            elif dat.iloc[:,-1].sum() == 4:
+                 cohort['multi'].append(family)
+            else:
+                cohort['duo'].append(family)
+        elif dat.shape[0] == 3 and dat['phenotype'].sum() ==4:
             cohort['trio'].append(family)
         else:
-            cohort['multi'].append(family)
-    else:
-        cohort['multi'].append(family)
+            cohort['multi'].append(family) 
+
+#for fam in list(cohort.keys()): 
+#    N=len(cohort[fam])
+#    print(f"N of {fam} in cohort:{N}")
 
 ped_dict = {v: k for k, values in cohort.items() for v in values}
 
-localrules: all, merge_tsv
+localrules: all, merge_tsv, make_tfam
 
+ruleorder: make_tfam > subset_per_fam
+
+rule prep_utr_csv:
+    input:
+        vcf = "final_vcfs/GP2_annotate.vcf.gz",
+        ped= "inputs/gp2_all.ped"
+    output:
+        "utr/filtered_var.csv"
+    threads: 1
+    resources:
+        nodes = 1
+    container:
+        "docker://zihhuafang/slivar_modified:0.2.7"
+    shell:
+       """
+        printf "%s" "Chr, Pos, Ref, Alt\n" > {output}
+        slivar expr --vcf {input.vcf} \
+                    --ped {input.ped} \
+                    --js /mnt/slivar/slivar-functions.js \
+                    --pass-only \
+                    --info "variant.ALT[0] != '*' && variant.call_rate > 0.95 && INFO.gnomad_AF < 0.05" \
+        | bcftools query -f '%CHROM, %POS, %REF, %ALT\n' >> {output} 
+       """
+
+rule prep_utr_db:
+    input:
+        rules.prep_utr_csv.output
+    output:
+        directory('utr/allvars_db')
+    params:
+        ensembl_version = '105'
+    threads: 1
+    resources:
+        nodes = 1
+    container:
+        "docker://zihhuafang/utr.annotation:v1.0.4"
+    shell:
+        """
+        Rscript --vanilla scripts/utr_db.R {input} {output} {params.ensembl_version}
+        """
+
+rule make_tfam:
+    output:
+        tfam= ["vcfs_per_fam/{famID}.tfam".format(famID=famID) for famID in ped_dict.keys()],
+        fam_list= ["vcfs_per_fam/{famID}.list".format(famID=famID) for famID in ped_dict.keys()] 
+    run:
+        import pandas as pd
+        df= pd.read_csv(config["gp2_ped"], sep="\t", header=None, names=["family_id","id","parental_id","maternal_id","sex","phenotype"])
+        FAM = list(df['family_id'].unique())
+
+        for family, dataframe in df.groupby('family_id'):
+            # save the dataframe for each group to a csv
+            dataframe.to_csv(f'vcfs_per_fam/{family}.tfam', sep="\t", header=False, index=False)
+            dataframe[['id']].to_csv(f'vcfs_per_fam/{family}.list', sep="\t", header=False, index=False)
 
 rule subset_per_fam:
     input: 
         vcf = "final_vcfs/GP2_annotate.vcf.gz",
         fam_list = "vcfs_per_fam/{famID}.list"
     output:
-        temp("vcfs_per_fam/raw/{famID}.vcf")
+        "vcfs_per_fam/raw/{famID}.vcf.gz"
     conda:
         "../envs/tools.yml"
-    resources:
+    threads: 1
+    resources:  
         nodes = 1
     shell:
         """
-        bcftools view -S {input.fam_list} {input.vcf} | SnpSift filter "(countVariant() > 0)" > {output}
-    
+        ##subset the vcf by family and remove monomorphic ref sites in the family vcf
+        bcftools view -S {input.fam_list} {input.vcf} \
+        |  bcftools filter -e 'AC==0' -O z -o {output} && tabix -p vcf -f {output}
         """
 
 rule slivar_filter:
@@ -73,38 +127,42 @@ rule slivar_filter:
         ped = "vcfs_per_fam/{famID}.tfam"
     output:
         temp("vcfs_per_fam/seg/{famID}.vcf")
+    threads: 1
     resources:
         nodes = 1
     run:
+        ## trio: call recessive variants for the complete penetrance and call dominant for incomplete penetrance 
         if ped_dict[wildcards.famID] == 'trio':
-            shell("""singularity exec -B /mnt/vol009/GP2/vep:$HOME slivar_modified_0.2.7.sif \
+            shell("""singularity exec -B /mnt/vol009/GP2/vep:$HOME -B /mnt/vol009/hg38_vep105:/mnt slivar_modified_0.2.7.sif \
                   slivar expr --vcf {input.vcf} \
                     --ped {input.ped} \
                     -o {output} \
-                    --js slivar/slivar-functions.js \
+                    --js /mnt/slivar/slivar-functions.js \
                     --pass-only \
-                    --info 'variant.ALT[0] != "*" && variant.call_rate > 0.95' \
-                    --trio 'denovo:denovo(kid, mom, dad) && INFO.gnomad_nhomalt < 10' \
-                    --trio 'x_denovo:x_denovo(kid, mom, dad) && INFO.gnomad_nhomalt < 10' \
-                    --trio 'recessive:recessive(kid, mom, dad) && INFO.gnomad_nhomalt < 10' \
-                    --trio 'x_recessive:x_recessive(kid, mom, dad)' && INFO.gnomad_nhomalt < 10 \
-                    --trio 'comphet:comphet_side(kid, mom, dad)' && INFO.gnomad_nhomalt < 10
+                    --info "variant.ALT[0] != '*' && variant.call_rate > 0.95" \
+                    --trio "denovo:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && denovo(kid, mom, dad) && INFO.gnomad_AF < 0.01" \
+                    --trio "x_denovo:x_denovo(kid, mom, dad) && INFO.gnomad_AF < 0.01" \
+                    --trio "HOM:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && recessive(kid, mom, dad) && INFO.gnomad_nhomalt < 10" \
+                    --trio "X_HOM:x_recessive(kid, mom, dad) && INFO.gnomad_nhomalt < 10" \
+                    --trio "comphet:comphet_side(kid, mom, dad) && INFO.gnomad_nhomalt < 10" \
+                    --family-expr "dominant:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_dominant) && !fam.every(segregating_denovo) && INFO.gnomad_AF < 0.01" \
+                    --family-expr "x_dominant:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_dominant_x) && !fam.every(segregating_denovo_x) && INFO.gnomad_AF < 0.01"
                   """)
-        else:
-            shell("""singularity exec -B /mnt/vol009/GP2/vep:$HOME slivar_modified_0.2.7.sif \
+        else: 
+            shell("""singularity exec -B /mnt/vol009/GP2/vep:$HOME -B /mnt/vol009/hg38_vep105:/mnt slivar_modified_0.2.7.sif \
                   slivar expr --vcf {input.vcf} \
                     --ped {input.ped} \
                     -o {output} \
-                    --js slivar/slivar-functions.js \
+                    --js /mnt/slivar/slivar-functions.js \
                     --pass-only \
-                    --info 'variant.ALT[0] != "*" && variant.call_rate > 0.95' \
-                    --family-expr 'recessive:fam.every(segregating_recessive) && INFO.gnomad_nhomalt < 10' \
-                    --family-expr 'x_recessive:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_recessive_x) && INFO.gnomad_nhomalt < 10' \
-                    --family-expr 'denovo:fam.every(segregating_denovo) && INFO.gnomad_nhomalt < 10' \
-                    --family-expr 'x_denovo:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_denovo_x) && INFO.gnomad_nhomalt < 10' \
-                    --family-expr 'dominant:INFO.gnomad_af < 0.01 && fam.every(segregating_dominant) && !fam.every(segregating_denovo)' \
-                    --family-expr 'x_dominant:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_dominant_x) && !fam.every(segregating_denovo_x) && INFO.gnomad_af < 0.01' \
-                    --family-expr 'comphet_side:fam.every(function(s) {{return (s.het || s.hom_ref) && hq1(s) }}) && fam.some(function(s) {{return s.het && s.affected}}) && INFO.gnomad_nhomalt < 10'
+                    --info "variant.ALT[0] != '*' && variant.call_rate > 0.95" \
+                    --family-expr "HOM:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_recessive) && INFO.gnomad_nhomalt < 10" \
+                    --family-expr "X_HOM:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_recessive_x) && INFO.gnomad_nhomalt < 10" \
+                    --family-expr "denovo:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_denovo) && INFO.gnomad_AF < 0.01" \
+                    --family-expr "x_denovo:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_denovo_x) && INFO.gnomad_AF < 0.01" \
+                    --family-expr "dominant:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_dominant) && !fam.every(segregating_denovo) && INFO.gnomad_AF < 0.01" \
+                    --family-expr "x_dominant:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_dominant_x) && !fam.every(segregating_denovo_x) && INFO.gnomad_AF < 0.01" \
+                    --family-expr "comphet_side:fam.every(function(s) {{return (s.het || s.hom_ref) && hq1(s) }}) && fam.some(function(s) {{return s.het && s.affected}}) && INFO.gnomad_nhomalt < 10"
                    """)
 
 rule Snpsift_count:
@@ -112,20 +170,44 @@ rule Snpsift_count:
         vcf = rules.slivar_filter.output,
         tfam = "vcfs_per_fam/{famID}.tfam"
     output:
-        temp("vcfs_per_fam/count/seg_{famID}.vcf")
+        vcf = temp("vcfs_per_fam/count/seg_{famID}.vcf"),
+        utr = "vcfs_per_fam/utr/input_{famID}.csv"
     conda:
         "../envs/tools.yml"
+    threads: 1
     resources:
         nodes = 1
     shell:
         """
-        SnpSift caseControl -tfam {input.tfam} {input.vcf} > {output}
-
+        mkdir -p vcfs_per_fam/utr
+        printf "%s" "Chr, Pos, Ref, Alt\n" > {output.utr}
+        SnpSift caseControl -tfam {input.tfam} {input.vcf} > {output.vcf}
+        bcftools query -f '%CHROM, %POS, %REF, %ALT\n' {output.vcf} >> {output.utr}
         """
 
+rule utr_anno:
+    input:
+        csv= rules.Snpsift_count.output.utr,
+        db= rules.prep_utr_db.output
+    output:
+        "vcfs_per_fam/utr/output_{famID}.csv"
+    params:
+        ensembl_version = '105'
+    threads: 4
+    container:
+        "docker://zihhuafang/utr.annotation:v1.0.4"
+    shell:
+        """
+        Rscript --vanilla scripts/utr_annotator.R {input.csv} {output} {input.db} {threads} {params.ensembl_version}
+        """
 
 skip_list = [
-    'intron',
+    'intergenic',
+    '5_prime_UTR',
+    '3_prime_UTR',
+    'TFBS_ablation',
+    'TF_binding_site',
+    'regulatory_region',
     'non_coding_transcript',
     'non_coding',
     'upstream_gene',
@@ -134,10 +216,9 @@ skip_list = [
     'NMD_transcript'
     ]
 
-
 rule slivar_comphet:
     input:
-        vcf = rules.Snpsift_count.output,
+        vcf = rules.Snpsift_count.output.vcf,
         ped = "vcfs_per_fam/{famID}.tfam"
     output:
         "vcfs_per_fam/comphet/{famID}.vcf"
@@ -145,6 +226,7 @@ rule slivar_comphet:
         skip = ",".join(skip_list)
     container:
         "docker://zihhuafang/slivar_modified:0.2.7"
+    threads: 1
     resources:
         nodes = 1
     shell:
@@ -158,24 +240,27 @@ rule slivar_comphet:
 
 
 info_fields = [
-    'gnomad_af',
+    'gnomad_AF',
+    'gnomad_popmax_af',
     'gnomad_nhomalt',
-    'gnomad_ac',
-    'topmed_af',
-    'CADD_RAW',
+    'gnomad_AC',
+    'TOPMed8_AF',
     'CADD_PHRED',
     'GP2_affected_gt',
     'GP2_unaffected_gt',
-    'amp-pd_case_nhet',
-    'amp-pd_case_nhomalt',
-    'amp-pd_case_nmiss',
+    'amp_pd_cases_gt',
     'Cases',
-    'Controls'
+    'Controls',
+    'CNCR'
     ]
 
 csq_columns= [
     'Existing_variation',
     'MAX_AF_POPS',
+    'LoF',
+    'LoF_filter',
+    'LoF_flags',
+    'LoF_info',
     'MetaRNN_score',
     'Ensembl_transcriptid',
     'SpliceAI_pred_DS_AG',
@@ -189,11 +274,14 @@ csq_columns= [
     'existing_uORFs',
     'five_prime_UTR_variant_annotation',
     'five_prime_UTR_variant_consequence',
-    'LoFtool',
     'Gene',
+    'IMPACT',
     'BIOTYPE',
     'STRAND',
     'CANONICAL',
+    'MANE_SELECT',
+    'MANE_PLUS_CLINICAL',
+    'TSL',
     'NEAREST',
     'EXON',
     'Codons',
@@ -201,20 +289,32 @@ csq_columns= [
     'HGVSc',
     'HGVSp',
     'ClinVar_CLNSIG',
-    'ClinVar_CLNDN'
+    'ClinVar_CLNDN',
+    'VAR_SYNONYMS',
+    'MOTIF_NAME',
+    'MOTIF_POS',
+    'HIGH_INF_POS',
+    'MOTIF_SCORE_CHANGE',
+    'TSSDistance',
+    'miRNA',
+    'TRANSCRIPTION_FACTORS',
+    'NMD',
+    'DisGeNET'
     ]
 
 gene_descs= [
-    'slivar/pLI_lookup.txt',
-    'slivar/oe_lof_lookup.txt',
-    'slivar/clinvar_gene_desc.txt'
+    '/mnt/slivar/pLI_lookup.txt',
+    '/mnt/slivar/oe_lof_upper_lookup.txt',
+    '/mnt/slivar/oe_mis_upper_lookup.txt',
+    '/mnt/slivar/oe_syn_upper_lookup.txt',
+    '/mnt/slivar/clinvar_gene_desc.txt',
+    '/mnt/slivar/hgncSymbol.inheritance.tsv',
+    '/mnt/slivar/lookup_description_symbol.txt'
     ]
-
-
 
 rule slivar_tsv:
     input:
-        vcf = rules.Snpsift_count.output,
+        vcf = rules.Snpsift_count.output.vcf,
         ped = "vcfs_per_fam/{famID}.tfam"
     output:
         "short_list/filtered_{famID}.tsv"
@@ -224,33 +324,17 @@ rule slivar_tsv:
         gene_desc = "".join([f"-g {x} " for x in gene_descs])
     container:
         "docker://zihhuafang/slivar_modified:0.2.7"
+    threads: 1
     resources:
         nodes = 1
     shell:
         """
-        n_sample=$(cat {input.ped} | wc -l)
-        if [ $n_sample == "1" ];
-        then
-            slivar tsv \
+        slivar tsv \
                {params.info} \
-               -i genic \
-               -s recessive \
-               -s x_recessive \
-               -s dominant \
-               -s x_dominant \
-               -c CSQ \
-               {params.csq} \
-               {params.gene_desc} \
-               -p {input.ped} \
-               {input.vcf} > {output}
-        else
-            slivar tsv \
-               {params.info} \
-               -i genic \
                -s denovo \
                -s x_denovo \
-               -s recessive \
-               -s x_recessive \
+               -s HOM \
+               -s X_HOM \
                -s dominant \
                -s x_dominant \
                -c CSQ \
@@ -258,7 +342,6 @@ rule slivar_tsv:
                {params.gene_desc} \
                -p {input.ped} \
                {input.vcf} > {output}        
-        fi
         """
 
 rule comphet_tsv:
@@ -273,6 +356,7 @@ rule comphet_tsv:
         gene_desc = "".join([f"-g {x} " for x in gene_descs])
     container:
         "docker://zihhuafang/slivar_modified:0.2.7"
+    threads: 1
     resources:
         nodes = 1
     shell:
@@ -280,7 +364,6 @@ rule comphet_tsv:
         slivar tsv \
             -s slivar_comphet \
                {params.info} \
-               -i genic \
                -c CSQ \
                {params.csq} \
                {params.gene_desc} \
@@ -289,28 +372,46 @@ rule comphet_tsv:
              | {{ grep -v ^# || true; }} >> {output}
         """
 
-
 rule merge_tsv:
     input: 
         filtered = "short_list/filtered_{famID}.tsv",
         comphet = "short_list/comphet_{famID}.tsv"
     output:
         "short_list/all_{famID}.tsv"
+    threads: 1
     resources:
         nodes = 1
     shell:
         """
         # get header from first file and drop it from other files
         # and make sure slivar_comphet id is unique
-        #awk 'NR == FNR || FNR > 1 {{ sub(/^slivar_comphet/, "slivar_comphet_"NR, $0); print; }}' {input.filtered} {input.comphet}
-        cat {input.filtered} {input.comphet} | sed '1 s/gene_description_1/gnomAD_pLI/;s/gene_description_2/gnomAD_oe_lof/;s/gene_description_3/clinvar_gene_description/;' > {output}
+        #awk 'NR == FNR || FNR > 1 {{ sub(/^slivar_comphet/, "comphet", $0); print; }}' {input.filtered} {input.comphet} 
+        ## change slivar_comphet_* to comphet 
+        cat {input.filtered} {input.comphet} | sed -r -e 's/slivar_comphet_[0-9]+/comphet/g' \
+        | sed '1 s/gene_description_1/gnomAD_pLI/;s/gene_description_2/gnomAD_oe_lof_CI90/;s/gene_description_3/gnomAD_oe_mis_CI90/;s/gene_description_4/gnomAD_oe_syn_CI90/;s/gene_description_5/clinvar_gene_description/;s/gene_description_6/MOI/;s/gene_description_7/gene_fullname/;' > {output}
         """
+
 rule report:
     input: 
-        rules.merge_tsv.output
+        tsv = rules.merge_tsv.output,
+        utr = rules.utr_anno.output,
+        ped = "inputs/gp2_all.ped"
     output:
-        genic_tier1="reports/{famID}_genic_tier1.tsv",
-        genic_tier2="reports/{famID}_genic_tier2.tsv",
-        nongenic= "reports/{famID}_nongenic.tsv"
+        excel="reports/{famID}.xlsx",
+    threads: 1
     script:
-        "report_format_v2.py"
+        ### modify the report script
+        "{workflow.basedir}/scripts/report_format_v4.py"
+
+rule literature:
+    input:
+        rules.report.output
+    output:
+        excel="reports/{famID}_pubmed_table.xlsx"
+    conda:
+        "../envs/literature.yml"
+    threads: 1
+    shell:
+        """
+        Rscript --vanilla {workflow.basedir}/scripts/pubmed_search.R {input} {wildcards.famID}
+        """

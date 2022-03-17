@@ -13,6 +13,8 @@ shell.prefix("set -o pipefail; umask 002; ")  # set g+w
 ##include rules
 include: "rules/CADD.smk"
 include: "rules/filter_per_fam.smk"
+include: "rules/gene_panel.smk"
+
 
 #Snakemake config
 min_version("5.5")
@@ -28,60 +30,71 @@ rule all:
         expand("final_vcfs/{chromosome}.vcf.gz", chromosome = chr_id),
         "final_vcfs/GP2_annotate.vcf.gz",
         "bfiles/all_chrs_merged.bed",
-#        "concordance/gp2_wgs_reduced_booster.pgen"
-        expand("reports/{famID}_{varlist}.tsv", famID=FAM, varlist=['genic_tier1','genic_tier2','nongenic'])
+        "concordance/gp2_wgs_reduced_booster.pgen",
+        expand("vcfs_per_fam/{famID}.tfam", famID=ped_dict.keys()),
+        expand("reports/{famID}.xlsx", famID=ped_dict.keys()),
+        expand("reports/{famID}_pubmed_table.xlsx", famID=ped_dict.keys()),
+        expand("{panel}/{famID}.xlsx", panel= ['panel1','panel2'], famID=FAMIDS)
 
 rule bcftools_norm:
     input:
         "inputs/gp2.vcf.gz"
     output:
-        temp("vcfs/gp2_norm.vcf.gz")
+        temp("vcfs/chrs/norm/{chromosome}.vcf.gz")
+    params:
+        chrom = "{chromosome}"
     threads:
-        20
+        2
     conda:
         "envs/tools.yml"
     shell:
        """
-       bcftools view -f PASS -Ou -s ^MH00724-TRO {input} \
+       bcftools view -f PASS --regions {params.chrom} -Ou -s ^MH00724-TRO {input} \
        | bcftools norm \
         -f {config[ref_genome]} \
         --threads {threads} \
         -m - \
-        -O z \
-        --output {output} \
-        && tabix -p vcf --force {output} 
+        -O u \
+       | bcftools +fill-tags -O u -- -t AN,AC,FORMAT/VAF \
+       | bcftools view --trim-alt-alleles --min-ac 1 -O v \
+       | vcftools --vcf - \
+                  --minGQ 20 \
+                  --minDP 5 \
+                  --recode \
+                  --recode-INFO-all \
+                  --stdout \
+       | bcftools filter -S . -i 'VAF>0.2 && VAF < 0.75 | VAF < 0.02 | VAF > 0.98' -O z -o {output} \
+        && tabix -p vcf --force {output}
        """
 
-rule split_by_chr:
+
+rule slivar_clean:
     input:
-        vcf= rules.bcftools_norm.output
+        vcf = rules.bcftools_norm.output
     output:
-        temp("vcfs/per_chr/{chromosome}.vcf.gz")
-    params:
-        chr = "{chromosome}"
+        "vcfs/chrs/filtered/{chromosome}.vcf.gz"
     container:
-        "docker://broadinstitute/gatk:4.1.9.0"
-    threads: 1
+        "docker://zihhuafang/slivar_modified:0.2.7"
+    threads:
+        1
     resources:
         nodes = 1
     shell:
         """
-        gatk SelectVariants \
-          -R {config[ref_genome]} \
-          -V {input.vcf} \
-          -L {params.chr} \
-          --exclude-filtered true \
-          --exclude-non-variants true \
-          -O {output}
+        slivar expr --js /mnt/slivar/slivar-functions.js \
+                    --pass-only \
+                    --info 'variant.ALT[0] != "*" && variant.call_rate > 0.95' \
+                    --vcf {input.vcf}  \
+        | bgzip -c > {output} && tabix -p vcf --force {output}
         """
 
 rule vep:
     input:
-        vcf = rules.split_by_chr.output
+        vcf = rules.slivar_clean.output
     output:
-        vcf = temp("vcfs/per_chr/vep/{chromosome}.vcf.gz")
+        vcf = temp("vcfs/chrs/vep/{chromosome}.vcf.gz")
     container:
-        "docker://ensemblorg/ensembl-vep:release_105.0"
+        "docker://zihhuafang/ensembl_vep_loftee:v105"
     threads: 10
     resources:
         nodes = 1
@@ -91,27 +104,15 @@ rule vep:
         -i {input.vcf} \
         --ASSEMBLY GRCh38 \
         --buffer_size 50000 \
-        --polyphen b \
-        --fasta {config[ref_genome]} \
-        --sift b \
-        --biotype \
-        --hgvs \
-        --protein \
-        --domains \
-        --pubmed \
-        --ccds \
+        --fasta {config[docker_ref_genome]} \
+        --everything \
+        --var_synonyms \
         --check_existing \
         --nearest symbol \
-        --gene_phenotype \
-        --canonical \
-        --regulatory \
         --terms SO \
-        --appris \
+        --mirna \
         --check_existing \
         --clin_sig_allele 1 \
-        --var_synonyms \
-        --variant_class \
-        --af --max_af --af_1kg --af_esp --af_gnomad \
         --force_overwrite \
         --cache \
         --pick \
@@ -122,54 +123,56 @@ rule vep:
         --plugin UTRannotator,/opt/vep/.vep/vep_annotation/uORF_5UTR_GRCh38_PUBLIC.txt \
         --plugin SpliceAI,snv=/opt/vep/.vep/vep_annotation/spliceai_scores.masked.indel.hg38.vcf.gz,indel=/opt/vep/.vep/vep_annotation/spliceai_scores.masked.indel.hg38.vcf.gz \
         --plugin SpliceRegion,Extended \
-        --plugin MaxEntScan,/opt/vep/.vep/Plugins/maxEntScan \
-        --plugin LoFtool,/opt/vep/.vep/vep_annotation/LoFtool_scores.txt \
         --plugin TSSDistance \
         --plugin NMD \
-        --plugin DisGeNET,file=/opt/vep/.vep/vep_annotation/all_variant_disease_pmid_associations_final.tsv.gz \
+        --plugin Downstream \
+        --plugin DisGeNET,file=/opt/vep/.vep/vep_annotation/all_variant_disease_pmid_associations_final.tsv.gz,disease=1 \
         --plugin dbNSFP,/opt/vep/.vep/vep_annotation/dbNSFP4.2a_grch38.gz,Ensembl_transcriptid,MetaRNN_score,LRT_score,GERP++_RS,FATHMM_score,fathmm-MKL_coding_score,DANN_score,REVEL_score,PrimateAI_score,Geuvadis_eQTL_target_gene,gnomAD_genomes_controls_and_biobanks_nhomalt \
+        --plugin LoF,loftee_path:/opt/vep/.vep/Plugins/loftee_hg38,\
+human_ancestor_fa:/opt/vep/.vep/Plugins/loftee_hg38/human_ancestor.fa.gz,\
+conservation_file:/opt/vep/.vep/Plugins/loftee_hg38/loftee.sql,\
+gerp_bigwig:/opt/vep/.vep/Plugins/loftee_hg38/gerp_conservation_scores.homo_sapiens.GRCh38.bw \
         --custom {config[clinvar]},ClinVar,vcf,exact,0,CLNSIG,CLNDN \
         -o {output.vcf} \
         --compress_output bgzip \
-        --fork {threads} \
         --vcf \
         --stats_text
         """
 
-rule split_vep:
-    input:
-       vcf = rules.vep.output
-    output:
-        temp("vcfs/per_chr/split_vep/{chromosome}.vcf.gz")
-    conda:
-        "envs/tools.yml"
-    threads: 5
-    resources:
-        nodes = 1
-    shell:
-        """
-        bcftools +split-vep \
-          -p vep \
-          -a CSQ \
-          -c MaxEntScan_alt:Float,MaxEntScan_diff:Float,MaxEntScan_ref:Float,SpliceAI_pred_DP_AG:Float,SpliceAI_pred_DP_AL:Float,SpliceAI_pred_DP_DG:Float,SpliceAI_pred_DP_DL:Float,SpliceAI_pred_DS_AG:Float,SpliceAI_pred_DS_AL:Float,SpliceAI_pred_DS_DG:Float,SpliceAI_pred_DS_DL:Float,SpliceAI_pred_SYMBOL:String,CLIN_SIG:String \
-          {input.vcf} | \
-        sed -e 's/vepMaxEntScan_alt,Number=./vepMaxEntScan_alt,Number=1/g' \
-        -e 's/vepMaxEntScan_diff,Number=./vepMaxEntScan_diff,Number=1/g'  \
-        -e 's/vepMaxEntScan_ref,Number=./vepMaxEntScan_ref,Number=1/g'   \
-        -e 's/vepSpliceAI_pred_DP_AG,Number=./vepSpliceAI_pred_DP_AG,Number=1/g'  \
-        -e 's/vepSpliceAI_pred_DP_AL,Number=./vepSpliceAI_pred_DP_AL,Number=1/g'  \
-        -e 's/vepSpliceAI_pred_DP_DG,Number=./vepSpliceAI_pred_DP_DG,Number=1/g'  \
-        -e 's/vepSpliceAI_pred_DP_DL,Number=./vepSpliceAI_pred_DP_DL,Number=1/g'  \
-        -e 's/vepSpliceAI_pred_DS_AG,Number=./vepSpliceAI_pred_DS_AG,Number=1/g'  \
-        -e 's/vepSpliceAI_pred_DS_AL,Number=./vepSpliceAI_pred_DS_AL,Number=1/g'  \
-        -e 's/vepSpliceAI_pred_DS_DG,Number=./vepSpliceAI_pred_DS_DG,Number=1/g'  \
-        -e 's/vepSpliceAI_pred_DS_DL,Number=./vepSpliceAI_pred_DS_DL,Number=1/g' \
-         | bgzip -c > {output} && tabix -p vcf --force {output}
-        """
+#rule split_vep:
+#    input:
+#       vcf = rules.vep.output
+#    output:
+#        temp("vcfs/chrs/split_vep/{chromosome}.vcf.gz")
+#    conda:
+#        "envs/tools.yml"
+#    threads: 1
+#    resources:
+#        nodes = 1
+#    shell:
+#        """
+#        bcftools +split-vep \
+#          -p vep \
+#          -a CSQ \
+#          -c MaxEntScan_alt:Float,MaxEntScan_diff:Float,MaxEntScan_ref:Float,SpliceAI_pred_DP_AG:Float,SpliceAI_pred_DP_AL:Float,SpliceAI_pred_DP_DG:Float,SpliceAI_pred_DP_DL:Float,SpliceAI_pred_DS_AG:Float,SpliceAI_pred_DS_AL:Float,SpliceAI_pred_DS_DG:Float,SpliceAI_pred_DS_DL:Float,SpliceAI_pred_SYMBOL:String,CLIN_SIG:String \
+#          {input.vcf} | \
+#        sed -e 's/vepMaxEntScan_alt,Number=./vepMaxEntScan_alt,Number=1/g' \
+#        -e 's/vepMaxEntScan_diff,Number=./vepMaxEntScan_diff,Number=1/g'  \
+#        -e 's/vepMaxEntScan_ref,Number=./vepMaxEntScan_ref,Number=1/g'   \
+#        -e 's/vepSpliceAI_pred_DP_AG,Number=./vepSpliceAI_pred_DP_AG,Number=1/g'  \
+#        -e 's/vepSpliceAI_pred_DP_AL,Number=./vepSpliceAI_pred_DP_AL,Number=1/g'  \
+#        -e 's/vepSpliceAI_pred_DP_DG,Number=./vepSpliceAI_pred_DP_DG,Number=1/g'  \
+#        -e 's/vepSpliceAI_pred_DP_DL,Number=./vepSpliceAI_pred_DP_DL,Number=1/g'  \
+#        -e 's/vepSpliceAI_pred_DS_AG,Number=./vepSpliceAI_pred_DS_AG,Number=1/g'  \
+#        -e 's/vepSpliceAI_pred_DS_AL,Number=./vepSpliceAI_pred_DS_AL,Number=1/g'  \
+#        -e 's/vepSpliceAI_pred_DS_DG,Number=./vepSpliceAI_pred_DS_DG,Number=1/g'  \
+#        -e 's/vepSpliceAI_pred_DS_DL,Number=./vepSpliceAI_pred_DS_DL,Number=1/g' \
+#         | bgzip -c > {output} && tabix -p vcf --force {output}
+#        """
 
 rule prep_vcf_CADD:
     input:
-        vcf = rules.split_by_chr.output,
+        rules.slivar_clean.output
     output:
         temp("CADD_input/{chromosome}.vcf")
     threads: 1
@@ -182,12 +185,13 @@ rule prep_vcf_CADD:
 
 rule gcount_case_control:
     input:
-        vcf = rules.split_by_chr.output,
-        tfam = "input_vcfs/gp2_all.tfam"
+        vcf = rules.slivar_clean.output,
+        tfam = "inputs/gp2_all.tfam"
     output:
         temp("vcfs/gcount/{chromosome}.vcf")
     conda:
         "envs/tools.yml"
+    threads: 1
     resources:
         nodes = 1
     shell:
@@ -200,7 +204,7 @@ rule gcount_case_control:
 
 rule add_anno_vcf:
     input:
-        vcf = rules.split_vep.output,
+        vcf = rules.vep.output,
         vcfanno_conf = "vcfanno_conf/vcfanno_{chromosome}.conf",
         CADD_score= "CADD/{chromosome}.tsv.gz",
         gcount = rules.gcount_case_control.output
@@ -232,19 +236,18 @@ rule slivar_gnotate:
         nodes = 1
     shell:
         """ 
-        slivar expr --js slivar/slivar-functions.js \
+        slivar expr --js /mnt/slivar/slivar-functions.js \
                     --pass-only \
-                    -g slivar/gnomad.hg38.v3.custom.zip \
-                    -g slivar/topmed.hg38.dbsnp.151.zip \
+                    -g /mnt/slivar/TOPMed_freeze8_PASS.zip \
+                    -g /mnt/slivar/gnomad_v3.1.2.zip \
                     --info 'variant.ALT[0] != "*" && variant.call_rate > 0.95' \
                     --vcf {input.vcf}  \
         | bgzip -c > {output} && tabix -p vcf --force {output}
         """
 
-
 rule plink_bfiles:
     input:
-        vcf= rules.split_by_chr.output
+        vcf= rules.slivar_clean.output
     output:
         "bfiles/{chromosome}.bed"
     params:
@@ -257,16 +260,18 @@ rule plink_bfiles:
     shell:
         """
         plink2 --vcf {input.vcf} \
-             --set-all-var-ids @:#:\$r-\$a \
-             --new-id-max-allele-len 50 missing \
              --threads {threads} \
+             --keep-allele-order \
+             --set-all-var-ids @:#:\$r:\$a \
+             --double-id \
+             --new-id-max-allele-len 300 missing \
              --make-bed \
              --out bfiles/{params.chr}
         """
 
 rule Gathervcf:
     input:
-        expand("final_vcfs/{chromosome}.vcf.gz", chromosome=chr_id)
+        lambda wildcards: expand("final_vcfs/{chromosome}.vcf.gz", chromosome=chr_id)
     output:
         "final_vcfs/GP2_annotate.vcf.gz"
     conda:
@@ -283,22 +288,25 @@ rule Gathervcf:
          
         """
 
+
 rule plink_gather:
     input:
-        vcf= "final_vcfs/GP2_annotate.vcf.gz"
+        vcf = "final_vcfs/GP2_annotate.vcf.gz"
     output:
         "bfiles/all_chrs_merged.bed"
     conda:
         "envs/tools.yml"
-    threads: 20
+    threads: 5
     resources:
         nodes = 1
     shell:
         """
         plink2 --vcf {input.vcf} \
              --threads {threads} \
-             --set-all-var-ids @:#:\$r-\$a \
-             --new-id-max-allele-len 50 missing \
+             --set-all-var-ids @:#:\$r:\$a \
+             --new-id-max-allele-len 300 missing \
+             --keep-allele-order \
+             --double-id \
              --make-bed \
              --out bfiles/all_chrs_merged
         """
@@ -308,18 +316,19 @@ rule plink_pfiles:
     input:
         vcf= "final_vcfs/GP2_annotate.vcf.gz"
     output:
-        "concordance/all_chrs_merged.pgen"
+        multiext("concordance/all_chrs_merged", ".pgen", ".psam", ".pvar")
     conda:
         "envs/tools.yml"
-    threads: 20
+    threads: 5
     resources:
         nodes = 1
     shell:
         """
         plink2 --vcf {input.vcf} \
              --threads {threads} \
-             --set-all-var-ids @:#-\$r-\$a \
-             --new-id-max-allele-len 50 missing \
+             --set-all-var-ids @:#:\$r:\$a \
+             --new-id-max-allele-len 300 missing \
+             --double-id \
              --make-pgen \
              --out concordance/all_chrs_merged
         """
@@ -329,10 +338,10 @@ rule plink2_wgs_reduced:
         pgen= "concordance/all_chrs_merged.pgen",
         booster_snp= "concordance/extract_booster_snp.txt"
     output:
-        "concordance/gp2_wgs_reduced_booster.pgen"
+        multiext("concordance/gp2_wgs_reduced_booster", ".pgen", ".psam", ".pvar")
     conda:
         "envs/tools.yml"
-    threads: 20
+    threads: 5
     params: "concordance/all_chrs_merged"
     resources:
         nodes = 1
@@ -341,6 +350,7 @@ rule plink2_wgs_reduced:
         plink2 --pfile {params} \
              --threads {threads} \
              --extract {input.booster_snp} \
+             --double-id \
              --make-pgen \
-             --out concordance/gp2_wgs_reduced2booster
+             --out concordance/gp2_wgs_reduced_booster
         """

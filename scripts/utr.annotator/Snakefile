@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+import glob
+import os
+from snakemake.utils import min_version
+
+
+#log output dir
+if not os.path.exists("slurm"):
+    os.makedirs("slurm")
+
+shell.prefix("set -o pipefail; umask 002; ")  # set g+w
+
+#Snakemake config
+min_version("5.5")
+
+samples = ["del_ankle2"]
+
+rule all:
+    input:
+        expand("annotated_{sample}.csv", sample = samples)
+
+rule utrannotator:
+    input:
+        "{sample}.csv"
+    output:
+        csv = "annotated_{sample}.csv",
+        db = directory("{sample}_db")
+    threads: 10
+    resources:
+        nodes = 1
+    container:
+        "docker://avalillarionova/utrannotator:latest"
+    shell:
+        """
+        Rscript --vanilla utr_annotator.R {input} {output.csv} {output.db} {threads}
+
+        """
+
