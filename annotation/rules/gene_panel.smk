@@ -28,40 +28,13 @@ gene_descs= [
     ]
 
 
-rule panel1:
+rule panel:
     input:
         vcf = "final_vcfs/GP2_annotate.vcf.gz",
         ped = "inputs/gp2_all.ped", 
         bed = "inputs/PD_panel_all_hg38.bed"   #include both core and extensive panels
     output:
-        "panel1/GP2.vcf"
-    container:
-        "docker://zihhuafang/slivar_modified:0.2.7"
-    params:
-        gene_desc = "".join([f"-g {x} " for x in gene_descs])
-    threads: 1
-    resources:
-        nodes = 1
-    shell:
-        """
-        slivar expr --vcf {input.vcf} \
-                    -o {output} \
-                    --ped {input.ped} \
-                    --js slivar/slivar-functions.js \
-                    --pass-only \
-                    --info 'INFO.gnomad_AF < 0.05 && variant.ALT[0] != "*" && variant.call_rate > 0.95' \
-                    --region {input.bed} \
-                    --family-expr "HOM:fam.every(function(s) {{return s.hom_alt == s.affected && hq1(s)}})" \
-                    --family-expr "HET:fam.every(function(s) {{return s.het == s.affected && hq1(s) }})"
-        """
-
-rule panel2:
-    input:
-        vcf = "final_vcfs/GP2_annotate.vcf.gz",
-        ped = "inputs/gp2_all.ped",
-        bed = "inputs/parkinson_panel_disease_gp2.bed"   #panel proposed by Ignacio
-    output:
-        "panel2/GP2.vcf"
+        "panel/GP2.vcf"
     container:
         "docker://zihhuafang/slivar_modified:0.2.7"
     params:
@@ -135,10 +108,10 @@ csq_columns= [
 
 rule panel_report:
     input:
-       vcf= "{panel}/GP2.vcf",
+       vcf= "panel/GP2.vcf",
        ped = "inputs/gp2_all.ped"
     output:
-        "{panel}/all_samples.tsv"
+        "panel/all_samples.tsv"
     container:
         "docker://zihhuafang/slivar_modified:0.2.7"
     params:
@@ -163,9 +136,9 @@ rule panel_report:
 
 rule fix_tsv:
     input:
-        "{panel}/all_samples.tsv"
+        "panel/all_samples.tsv"
     output:
-        "{panel}/fixed_all_samples.tsv"
+        "panel/fixed_all_samples.tsv"
     threads: 1
     resources:
         nodes = 1
@@ -177,23 +150,12 @@ rule fix_tsv:
 
 rule format_report:
     input:
-        tsv = "panel1/fixed_all_samples.tsv",
+        tsv = "panel/fixed_all_samples.tsv",
         core_panel = "inputs/PD_core_panel.list",
         extend_panel = "inputs/PD_extended_panel.list"
     output:
-        expand("panel1/{famID}.xlsx", famID=FAMIDS)
+        expand("panel/{famID}.xlsx", famID=FAMIDS)
     threads: 1
     script:
-        ### modify the report script
-        "{workflow.basedir}/scripts/report_panel.py"
+        "../scripts/report_panel.py"
 
-
-rule format_report2:
-    input:
-        tsv = "panel2/fixed_all_samples.tsv"
-    output:
-        expand("panel2/{famID}.xlsx", famID=FAMIDS)
-    threads: 1
-    script:
-        ### modify the report script
-        "{workflow.basedir}/scripts/report_panel2.py"

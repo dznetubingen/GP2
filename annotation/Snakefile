@@ -12,9 +12,9 @@ shell.prefix("set -o pipefail; umask 002; ")  # set g+w
 
 ##include rules
 include: "rules/CADD.smk"
-include: "rules/filter_per_fam.smk"
-include: "rules/gene_panel.smk"
-
+include: "rules/plink_file_prep.smk"
+#include: "rules/gene_panel.smk"
+#include: "rules/filter_per_fam.smk"
 
 #Snakemake config
 min_version("5.5")
@@ -31,10 +31,11 @@ rule all:
         "final_vcfs/GP2_annotate.vcf.gz",
         "bfiles/all_chrs_merged.bed",
         "concordance/gp2_wgs_reduced_booster.pgen",
-        expand("vcfs_per_fam/{famID}.tfam", famID=ped_dict.keys()),
-        expand("reports/{famID}.xlsx", famID=ped_dict.keys()),
-        expand("reports/{famID}_pubmed_table.xlsx", famID=ped_dict.keys()),
-        expand("{panel}/{famID}.xlsx", panel= ['panel1','panel2'], famID=FAMIDS)
+        "utr/allvars_db"
+#        expand("vcfs_per_fam/{famID}.tfam", famID=ped_dict.keys()),
+#        expand("reports/{famID}.xlsx", famID=ped_dict.keys()),
+#        expand("reports/{famID}_pubmed_table.xlsx", famID=ped_dict.keys()),
+#        expand("{panel}/{famID}.xlsx", panel= ['panel1','panel2'], famID=FAMIDS)
 
 rule bcftools_norm:
     input:
@@ -49,7 +50,7 @@ rule bcftools_norm:
         "envs/tools.yml"
     shell:
        """
-       bcftools view -f PASS --regions {params.chrom} -Ou -s ^MH00724-TRO {input} \
+       bcftools view -f PASS --regions {params.chrom} -Ou {input} \
        | bcftools norm \
         -f {config[ref_genome]} \
         --threads {threads} \
@@ -288,69 +289,41 @@ rule Gathervcf:
          
         """
 
-
-rule plink_gather:
+rule prep_utr_csv:
     input:
-        vcf = "final_vcfs/GP2_annotate.vcf.gz"
+        vcf = "final_vcfs/GP2_annotate.vcf.gz",
+        ped= "inputs/gp2_all.ped"
     output:
-        "bfiles/all_chrs_merged.bed"
-    conda:
-        "envs/tools.yml"
-    threads: 5
+        "utr/filtered_var.csv"
+    threads: 1
     resources:
         nodes = 1
+    container:
+        "docker://zihhuafang/slivar_modified:0.2.7"
     shell:
-        """
-        plink2 --vcf {input.vcf} \
-             --threads {threads} \
-             --set-all-var-ids @:#:\$r:\$a \
-             --new-id-max-allele-len 300 missing \
-             --keep-allele-order \
-             --double-id \
-             --make-bed \
-             --out bfiles/all_chrs_merged
-        """
+       """
+        printf "%s" "Chr, Pos, Ref, Alt\n" > {output}
+        slivar expr --vcf {input.vcf} \
+                    --ped {input.ped} \
+                    --js /mnt/slivar/slivar-functions.js \
+                    --pass-only \
+                    --info "variant.ALT[0] != '*' && variant.call_rate > 0.95 && INFO.gnomad_AF < 0.05" \
+        | bcftools query -f '%CHROM, %POS, %REF, %ALT\n' >> {output}
+       """
 
-
-rule plink_pfiles:
+rule prep_utr_db:
     input:
-        vcf= "final_vcfs/GP2_annotate.vcf.gz"
+        rules.prep_utr_csv.output
     output:
-        multiext("concordance/all_chrs_merged", ".pgen", ".psam", ".pvar")
-    conda:
-        "envs/tools.yml"
-    threads: 5
+        directory('utr/allvars_db')
+    params:
+        ensembl_version = '105'
+    threads: 1
     resources:
         nodes = 1
+    container:
+        "docker://zihhuafang/utr.annotation:v1.0.4"
     shell:
         """
-        plink2 --vcf {input.vcf} \
-             --threads {threads} \
-             --set-all-var-ids @:#:\$r:\$a \
-             --new-id-max-allele-len 300 missing \
-             --double-id \
-             --make-pgen \
-             --out concordance/all_chrs_merged
-        """
-
-rule plink2_wgs_reduced:
-    input:
-        pgen= "concordance/all_chrs_merged.pgen",
-        booster_snp= "concordance/extract_booster_snp.txt"
-    output:
-        multiext("concordance/gp2_wgs_reduced_booster", ".pgen", ".psam", ".pvar")
-    conda:
-        "envs/tools.yml"
-    threads: 5
-    params: "concordance/all_chrs_merged"
-    resources:
-        nodes = 1
-    shell:
-        """
-        plink2 --pfile {params} \
-             --threads {threads} \
-             --extract {input.booster_snp} \
-             --double-id \
-             --make-pgen \
-             --out concordance/gp2_wgs_reduced_booster
+        Rscript --vanilla scripts/utr_db.R {input} {output} {params.ensembl_version}
         """

@@ -12,4 +12,4 @@ library(utr.annotation)
 library(MRL.dl.model)
 
 
-initUTRAnnotation(variantFile = input_csv, species = "human", dataDir = db, ensemblVersion = version)
+initUTRAnnotation(variantFile = input_csv, species = "human", dataDir = db, ensemblVersion = version, getTranscript=FALSE)

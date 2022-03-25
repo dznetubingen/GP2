@@ -50,44 +50,6 @@ localrules: all, merge_tsv, make_tfam
 
 ruleorder: make_tfam > subset_per_fam
 
-rule prep_utr_csv:
-    input:
-        vcf = "final_vcfs/GP2_annotate.vcf.gz",
-        ped= "inputs/gp2_all.ped"
-    output:
-        "utr/filtered_var.csv"
-    threads: 1
-    resources:
-        nodes = 1
-    container:
-        "docker://zihhuafang/slivar_modified:0.2.7"
-    shell:
-       """
-        printf "%s" "Chr, Pos, Ref, Alt\n" > {output}
-        slivar expr --vcf {input.vcf} \
-                    --ped {input.ped} \
-                    --js /mnt/slivar/slivar-functions.js \
-                    --pass-only \
-                    --info "variant.ALT[0] != '*' && variant.call_rate > 0.95 && INFO.gnomad_AF < 0.05" \
-        | bcftools query -f '%CHROM, %POS, %REF, %ALT\n' >> {output} 
-       """
-
-rule prep_utr_db:
-    input:
-        rules.prep_utr_csv.output
-    output:
-        directory('utr/allvars_db')
-    params:
-        ensembl_version = '105'
-    threads: 1
-    resources:
-        nodes = 1
-    container:
-        "docker://zihhuafang/utr.annotation:v1.0.4"
-    shell:
-        """
-        Rscript --vanilla scripts/utr_db.R {input} {output} {params.ensembl_version}
-        """
 
 rule make_tfam:
     output:
@@ -188,7 +150,7 @@ rule Snpsift_count:
 rule utr_anno:
     input:
         csv= rules.Snpsift_count.output.utr,
-        db= rules.prep_utr_db.output
+        db= "utr/allvars_db"
     output:
         "vcfs_per_fam/utr/output_{famID}.csv"
     params:
@@ -401,7 +363,7 @@ rule report:
     threads: 1
     script:
         ### modify the report script
-        "{workflow.basedir}/scripts/report_format_v4.py"
+        "../scripts/report_format_v4.py"
 
 rule literature:
     input:
@@ -413,5 +375,5 @@ rule literature:
     threads: 1
     shell:
         """
-        Rscript --vanilla {workflow.basedir}/scripts/pubmed_search.R {input} {wildcards.famID}
+        Rscript --vanilla ../scripts/pubmed_search.R {input} {wildcards.famID}
         """
