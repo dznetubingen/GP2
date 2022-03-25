@@ -1,6 +1,6 @@
 # The Short-read variant calling pipelines for GP2 samples on Terra
 
-**Input: Paired-end fastq file**
+**Input: Paired-end fastq files**
 
 - 1-SplitRG_Paired_Fastq.wdl: Split paried-end fastq files by read groups.
 - 2-Paired-fastq-to-unmapped-bam.wdl: Convert fastqs into ubam files
