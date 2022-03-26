@@ -34,7 +34,7 @@ workflow ConvertPairedFastQsToUnmappedBamWf {
   String ubam_list_name = basename(readgroup_list,".txt") + "_ubams"
   
   String? gatk_docker_override
-  String gatk_docker = select_first([gatk_docker_override, "us.gcr.io/broad-gatk/gatk:4.2.4.0"])
+  String gatk_docker = select_first([gatk_docker_override, "us.gcr.io/broad-gatk/gatk:4.2.5.0"])
   String? gatk_path_override
   String gatk_path = select_first([gatk_path_override, "gatk"])
   Int? preemptible_attempts
