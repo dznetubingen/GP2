@@ -112,6 +112,8 @@ rule join:
         cat {input.pre} {input.novel} \
         | grep -v "^#" \
         | sort -k1,1 -k2,2n -k3,3 -k4,4 || true;
-        ) | bgzip -c > {output} && tabix -s1 -b2 -e2 --force {output}
+        ) | bgzip -c > {output} 
+
+        tabix -s1 -b2 -e2 --force {output}
         '''
 

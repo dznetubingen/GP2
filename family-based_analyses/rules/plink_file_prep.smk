@@ -14,7 +14,7 @@ shell.prefix("set -o pipefail; umask 002; ")  # set g+w
 min_version("5.5")
 configfile: "configs/config.yaml"
 
-rule plink_gather:
+rule plink_bfile:
     input:
         vcf = "final_vcfs/GP2_annotate.vcf.gz"
     output:
@@ -28,16 +28,15 @@ rule plink_gather:
         """
         plink2 --vcf {input.vcf} \
              --threads {threads} \
-             --set-all-var-ids @:#:\$r:\$a \
-             --new-id-max-allele-len 300 missing \
+             --set-missing-var-ids @:#:\$r:\$a \
+             --new-id-max-allele-len 500 missing \
              --keep-allele-order \
              --double-id \
              --make-bed \
              --out bfiles/all_chrs_merged
         """
 
-
-rule plink_pfiles:
+rule plink_pfile:
     input:
         vcf= "final_vcfs/GP2_annotate.vcf.gz"
     output:
@@ -51,13 +50,12 @@ rule plink_pfiles:
         """
         plink2 --vcf {input.vcf} \
              --threads {threads} \
-             --set-all-var-ids @:#:\$r:\$a \
-             --new-id-max-allele-len 300 missing \
              --double-id \
              --make-pgen \
              --out concordance/all_chrs_merged
         """
 
+# need to remake "concordance/extract_booster_snp.txt" with hg38 vcf
 rule plink2_wgs_reduced:
     input:
         pgen= "concordance/all_chrs_merged.pgen",
@@ -78,4 +76,49 @@ rule plink2_wgs_reduced:
              --double-id \
              --make-pgen \
              --out concordance/gp2_wgs_reduced_booster
+        """
+
+rule merge_with_1kg:
+    input:
+        vcf= "final_vcfs/GP2_annotate.vcf.gz",
+        ref_panel = "/mnt/vol009/fangz/ref_panel/gp2_panel_hg38/gp2_ref_panel_hg38.vcf.gz"
+    output:
+        "qc/gp2_merged_refpanel_to_qc.vcf.gz"
+    conda:
+        "../envs/tools.yml"
+    threads: 5
+    resources:
+        nodes = 1
+    shell:
+        """
+        bcftools merge -m none -O v {input.ref_panel} {input.vcf}\
+        | vcftools --vcf - \
+           --maf 0.05 \
+           --hwe 0.0001 \
+           --max-missing 0.95 \
+           --recode \
+           --stdout \
+        | bgzip -c > {output} 
+
+        tabix -p vcf -f {output}
+        """
+
+rule prep_bed_qc:
+    input:
+       rules.merge_with_1kg.output
+    output:
+        multiext("qc/gp2_merged_refpanel_to_qc", ".bed", ".bim", ".fam")
+    conda:
+        "../envs/tools.yml"
+    threads: 5
+    params: "qc/gp2_merged_refpanel_to_qc"
+    resources:
+        nodes = 1
+    shell:
+        """
+        plink2 --vcf {input} \
+             --threads {threads} \
+             --double-id \
+             --make-bed \
+             --out {params}
         """

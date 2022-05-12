@@ -6,6 +6,7 @@ import re
 df = pd.read_csv(snakemake.input.tsv,sep="\t",dtype=str)
 c = pd.read_csv(snakemake.input.core_panel, header=None).iloc[:,0].to_list()
 e = pd.read_csv(snakemake.input.extend_panel, header=None).iloc[:,0].to_list()
+ped = pd.read_csv(snakemake.input.ped, sep='\t', header=None, names=['family_id','id','parental_id','maternal_id','sex','phenotype'])
 
 #aggregate sample-level fields per family
 sample_cols=['sample_id','genotype(sample,dad,mom)','depths(sample,dad,mom)', 'allele_balance(sample,dad,mom)']
@@ -34,15 +35,13 @@ def make_Clinvarlink(value):
     url = "https://www.ncbi.nlm.nih.gov/clinvar/variation/{}"
     return '=HYPERLINK("%s", "%s")' % (url.format(value), value)
 
-
 ##split var_synmoous (get only clinvar accession and OMIM)
-tmp['OMIM_link']=tmp["VAR_SYNONYMS"].str.extract(r'(?<=OMIM::)(.*?)(?=\.)')
 tmp['OMIM_link'] = tmp['OMIM_link'].apply(lambda x: make_OMIMlink(x))
 tmp['ClinVar_link']=tmp["VAR_SYNONYMS"].str.extract(r'(VCV\d*)')
 tmp['ClinVar_link'] = tmp['ClinVar_link'].apply(lambda x: make_Clinvarlink(x))
 
 tmp=tmp.astype(str)  
-tmp=tmp.applymap(lambda x: re.sub('.*nan.*','',x ))
+tmp[['OMIM_link','ClinVar_link']]=tmp[['OMIM_link','ClinVar_link']].applymap(lambda x: re.sub('.*nan.*','',x ))
 
 #columns to drop
 allvars= tmp.drop(['VAR_SYNONYMS', get_max_str(out.columns)],axis=1)
@@ -59,7 +58,19 @@ column_names = ['mode','chr:pos:ref:alt','family_id','gene','gene_fullname','Ens
 allvars = allvars.reindex(columns=column_names)
 allvars = allvars.loc[allvars['BIOTYPE']=='protein_coding'].sort_values(['mode','chr:pos:ref:alt','highest_impact'], ascending = (True, True,True))
 
+fams=list(ped['family_id'].unique())
+
+# write out the report from each family
 for family, dat in allvars.groupby('family_id'):
-    with pd.ExcelWriter(f'panel1/{family}.xlsx') as writer:
+    with pd.ExcelWriter(f'panel/{family}.xlsx') as writer:
         dat.loc[allvars.gene.isin(c)].to_excel(writer, sheet_name='core',index = False, header=True) 
         dat.loc[allvars.gene.isin(e)].to_excel(writer, sheet_name='extend',index = False, header=True)
+
+# write out empty report if a family doesn't have variants
+fam_list=list(allvars.family_id.unique())
+empty_fam=[ x for x in fams if x not in fam_list]
+
+for family in empty_fam:
+    print(family)
+    c=pd.DataFrame()
+    c.to_excel(f'panel/{family}.xlsx', index = False)

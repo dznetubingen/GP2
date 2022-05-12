@@ -19,6 +19,7 @@ configfile: "configs/config.yaml"
 
 ###make tfam file for each family
 df= pd.read_csv(config["gp2_ped"], sep='\t', header=None, names=['family_id','id','parental_id','maternal_id','sex','phenotype'])
+#wgs = pd.read_csv('inputs/wgs_samples.list', header=None, names=['id'])
 
 cohort=defaultdict(list,{ k:[] for k in ('singleton','duo','group','trio','multi') })
 for family, dat in df.groupby('family_id'):
@@ -101,14 +102,14 @@ rule slivar_filter:
                     -o {output} \
                     --js /mnt/slivar/slivar-functions.js \
                     --pass-only \
-                    --info "variant.ALT[0] != '*' && variant.call_rate > 0.95" \
-                    --trio "denovo:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && denovo(kid, mom, dad) && INFO.gnomad_AF < 0.01" \
-                    --trio "x_denovo:x_denovo(kid, mom, dad) && INFO.gnomad_AF < 0.01" \
+                    --info "variant.ALT[0] != '*' && variant.call_rate >= 0.95" \
+                    --trio "denovo:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && denovo(kid, mom, dad) && INFO.gnomad_popmax_af < 0.01" \
+                    --trio "x_denovo:x_denovo(kid, mom, dad) && INFO.gnomad_popmax_af <= 0.01" \
                     --trio "HOM:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && recessive(kid, mom, dad) && INFO.gnomad_nhomalt < 10" \
-                    --trio "X_HOM:x_recessive(kid, mom, dad) && INFO.gnomad_nhomalt < 10" \
-                    --trio "comphet:comphet_side(kid, mom, dad) && INFO.gnomad_nhomalt < 10" \
-                    --family-expr "dominant:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_dominant) && !fam.every(segregating_denovo) && INFO.gnomad_AF < 0.01" \
-                    --family-expr "x_dominant:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_dominant_x) && !fam.every(segregating_denovo_x) && INFO.gnomad_AF < 0.01"
+                    --trio "X_HOM:x_recessive(kid, mom, dad) && INFO.gnomad_nhomalt <= 10" \
+                    --trio "comphet:comphet_side(kid, mom, dad) && INFO.gnomad_nhomalt <= 10" \
+                    --family-expr "dominant:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_dominant) && !fam.every(segregating_denovo) && INFO.gnomad_popmax_af <= 0.01" \
+                    --family-expr "x_dominant:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_dominant_x) && !fam.every(segregating_denovo_x) && INFO.gnomad_popmax_af <= 0.01"
                   """)
         else: 
             shell("""singularity exec -B /mnt/vol009/GP2/vep:$HOME -B /mnt/vol009/hg38_vep105:/mnt slivar_modified_0.2.7.sif \
@@ -117,14 +118,14 @@ rule slivar_filter:
                     -o {output} \
                     --js /mnt/slivar/slivar-functions.js \
                     --pass-only \
-                    --info "variant.ALT[0] != '*' && variant.call_rate > 0.95" \
-                    --family-expr "HOM:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_recessive) && INFO.gnomad_nhomalt < 10" \
-                    --family-expr "X_HOM:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_recessive_x) && INFO.gnomad_nhomalt < 10" \
-                    --family-expr "denovo:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_denovo) && INFO.gnomad_AF < 0.01" \
-                    --family-expr "x_denovo:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_denovo_x) && INFO.gnomad_AF < 0.01" \
-                    --family-expr "dominant:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_dominant) && !fam.every(segregating_denovo) && INFO.gnomad_AF < 0.01" \
-                    --family-expr "x_dominant:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_dominant_x) && !fam.every(segregating_denovo_x) && INFO.gnomad_AF < 0.01" \
-                    --family-expr "comphet_side:fam.every(function(s) {{return (s.het || s.hom_ref) && hq1(s) }}) && fam.some(function(s) {{return s.het && s.affected}}) && INFO.gnomad_nhomalt < 10"
+                    --info "variant.ALT[0] != '*' && variant.call_rate >= 0.95" \
+                    --family-expr "HOM:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_recessive) && INFO.gnomad_nhomalt <= 10" \
+                    --family-expr "X_HOM:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_recessive_x) && INFO.gnomad_nhomalt <= 10" \
+                    --family-expr "denovo:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_denovo) && INFO.gnomad_popmax_af <= 0.01" \
+                    --family-expr "x_denovo:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_denovo_x) && INFO.gnomad_popmax_af <= 0.01" \
+                    --family-expr "dominant:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_dominant) && !fam.every(segregating_denovo) && INFO.gnomad_popmax_af <= 0.01" \
+                    --family-expr "x_dominant:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_dominant_x) && !fam.every(segregating_denovo_x) && INFO.gnomad_popmax_af <= 0.01" \
+                    --family-expr "comphet_side:fam.every(function(s) {{return (s.het || s.hom_ref) && hq1(s) }}) && fam.some(function(s) {{return s.het && s.affected}}) && INFO.gnomad_nhomalt <= 10"
                    """)
 
 rule Snpsift_count:
@@ -132,8 +133,7 @@ rule Snpsift_count:
         vcf = rules.slivar_filter.output,
         tfam = "vcfs_per_fam/{famID}.tfam"
     output:
-        vcf = temp("vcfs_per_fam/count/seg_{famID}.vcf"),
-        utr = "vcfs_per_fam/utr/input_{famID}.csv"
+        vcf = temp("vcfs_per_fam/count/seg_{famID}.vcf")
     conda:
         "../envs/tools.yml"
     threads: 1
@@ -141,26 +141,7 @@ rule Snpsift_count:
         nodes = 1
     shell:
         """
-        mkdir -p vcfs_per_fam/utr
-        printf "%s" "Chr, Pos, Ref, Alt\n" > {output.utr}
         SnpSift caseControl -tfam {input.tfam} {input.vcf} > {output.vcf}
-        bcftools query -f '%CHROM, %POS, %REF, %ALT\n' {output.vcf} >> {output.utr}
-        """
-
-rule utr_anno:
-    input:
-        csv= rules.Snpsift_count.output.utr,
-        db= "utr/allvars_db"
-    output:
-        "vcfs_per_fam/utr/output_{famID}.csv"
-    params:
-        ensembl_version = '105'
-    threads: 4
-    container:
-        "docker://zihhuafang/utr.annotation:v1.0.4"
-    shell:
-        """
-        Rscript --vanilla scripts/utr_annotator.R {input.csv} {output} {input.db} {threads} {params.ensembl_version}
         """
 
 skip_list = [
@@ -200,7 +181,6 @@ rule slivar_comphet:
                -o {output}
         """
 
-
 info_fields = [
     'gnomad_AF',
     'gnomad_popmax_af',
@@ -209,7 +189,6 @@ info_fields = [
     'TOPMed8_AF',
     'CADD_PHRED',
     'GP2_affected_gt',
-    'GP2_unaffected_gt',
     'amp_pd_cases_gt',
     'Cases',
     'Controls',
@@ -261,7 +240,9 @@ csq_columns= [
     'miRNA',
     'TRANSCRIPTION_FACTORS',
     'NMD',
-    'DisGeNET'
+    'DisGeNET',
+    'DownstreamProtein',
+    'ProteinLengthChange'
     ]
 
 gene_descs= [
@@ -271,7 +252,8 @@ gene_descs= [
     '/mnt/slivar/oe_syn_upper_lookup.txt',
     '/mnt/slivar/clinvar_gene_desc.txt',
     '/mnt/slivar/hgncSymbol.inheritance.tsv',
-    '/mnt/slivar/lookup_description_symbol.txt'
+    '/mnt/slivar/lookup_description_symbol.txt',
+    '/mnt/slivar/OMIM_entry_genesymbol.txt'
     ]
 
 rule slivar_tsv:
@@ -350,16 +332,15 @@ rule merge_tsv:
         #awk 'NR == FNR || FNR > 1 {{ sub(/^slivar_comphet/, "comphet", $0); print; }}' {input.filtered} {input.comphet} 
         ## change slivar_comphet_* to comphet 
         cat {input.filtered} {input.comphet} | sed -r -e 's/slivar_comphet_[0-9]+/comphet/g' \
-        | sed '1 s/gene_description_1/gnomAD_pLI/;s/gene_description_2/gnomAD_oe_lof_CI90/;s/gene_description_3/gnomAD_oe_mis_CI90/;s/gene_description_4/gnomAD_oe_syn_CI90/;s/gene_description_5/clinvar_gene_description/;s/gene_description_6/MOI/;s/gene_description_7/gene_fullname/;' > {output}
+        | sed '1 s/gene_description_1/gnomAD_pLI/;s/gene_description_2/gnomAD_oe_lof_CI90/;s/gene_description_3/gnomAD_oe_mis_CI90/;s/gene_description_4/gnomAD_oe_syn_CI90/;s/gene_description_5/clinvar_gene_description/;s/gene_description_6/MOI/;s/gene_description_7/gene_fullname/;s/gene_description_8/OMIM_link/;' > {output}
         """
 
 rule report:
     input: 
-        tsv = rules.merge_tsv.output,
-        utr = rules.utr_anno.output,
+        tsv = "short_list/all_{famID}.tsv",
         ped = "inputs/gp2_all.ped"
     output:
-        excel="reports/{famID}.xlsx",
+        excel="reports/{famID}.xlsx"
     threads: 1
     script:
         ### modify the report script
@@ -375,5 +356,5 @@ rule literature:
     threads: 1
     shell:
         """
-        Rscript --vanilla ../scripts/pubmed_search.R {input} {wildcards.famID}
+        Rscript --vanilla scripts/pubmed_search.R {input} {wildcards.famID}
         """

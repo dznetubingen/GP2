@@ -24,7 +24,8 @@ gene_descs= [
     '/mnt/slivar/oe_syn_upper_lookup.txt',
     '/mnt/slivar/clinvar_gene_desc.txt',
     '/mnt/slivar/hgncSymbol.inheritance.tsv',
-    '/mnt/slivar/lookup_description_symbol.txt'
+    '/mnt/slivar/lookup_description_symbol.txt',
+    '/mnt/slivar/OMIM_entry_genesymbol.txt'
     ]
 
 
@@ -103,6 +104,8 @@ csq_columns= [
     'VAR_SYNONYMS',
     'miRNA',
     'NMD',
+    'DownstreamProtein',
+    'ProteinLengthChange',
     'DisGeNET'
     ]
 
@@ -145,14 +148,15 @@ rule fix_tsv:
     shell:
         """
         cat {input} \
-        | sed '1 s/gene_description_1/gnomAD_pLI/;s/gene_description_2/gnomAD_oe_lof_CI90/;s/gene_description_3/gnomAD_oe_mis_CI90/;s/gene_description_4/gnomAD_oe_syn_CI90/;s/gene_description_5/clinvar_gene_description/;s/gene_description_6/MOI/;s/gene_description_7/gene_fullname/;' > {output}
+        | sed '1 s/gene_description_1/gnomAD_pLI/;s/gene_description_2/gnomAD_oe_lof_CI90/;s/gene_description_3/gnomAD_oe_mis_CI90/;s/gene_description_4/gnomAD_oe_syn_CI90/;s/gene_description_5/clinvar_gene_description/;s/gene_description_6/MOI/;s/gene_description_7/gene_fullname/;s/gene_description_8/OMIM_link/;' > {output}
         """
 
 rule format_report:
     input:
         tsv = "panel/fixed_all_samples.tsv",
         core_panel = "inputs/PD_core_panel.list",
-        extend_panel = "inputs/PD_extended_panel.list"
+        extend_panel = "inputs/PD_extended_panel.list",
+        ped = "inputs/gp2_all.ped"
     output:
         expand("panel/{famID}.xlsx", famID=FAMIDS)
     threads: 1
