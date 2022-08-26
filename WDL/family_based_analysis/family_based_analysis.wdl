@@ -444,6 +444,8 @@ task slivar_seg {
                     --trio "HOM:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && recessive(kid, mom, dad) && INFO.gnomADg_nhomalt < 10" \
                     --trio "X_HOM:x_recessive(kid, mom, dad) && INFO.gnomADg_nhomalt <= 10" \
                     --trio "comphet_side:comphet_side(kid, mom, dad) && INFO.gnomADg_nhomalt <= 10" \
+                    --family-expr "dominant:(variant.CHROM != 'X' || variant.CHROM != 'chrX') && fam.every(segregating_dominant) && !fam.every(segregating_denovo) && INFO.gnomADg_Popmax_AF <= 0.01" \
+                    --family-expr "x_dominant:(variant.CHROM == 'X' || variant.CHROM == 'chrX') && fam.every(segregating_dominant_x) && !fam.every(segregating_denovo_x) && INFO.gnomADg_Popmax_AF <= 0.01" 
     else
         slivar expr --vcf ~{input_vcf} \
                     --ped ~{pedigree} \
